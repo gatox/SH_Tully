@@ -47,7 +47,7 @@ def propagator(h_ij, v, k_ij, dt):
 
 
 def coefficients(c_i, p_ij):
-    c_j = p_ij*c_i
+    c_j = p_ij.dot(c_i)
     return c_j
 
 def hopping(c_j, c_i):
@@ -61,11 +61,11 @@ def HO_aceleration(m, k, x):
 	return a
 
 
-def U_1(k, x):
+def U_i(k, x):
     en_1 = k*(x**2)
     return en_1
 
-def U_2(k, x):
+def U_j(k, x):
     en_2 = k*(x-2)**2
     return en_2
 
@@ -98,9 +98,9 @@ v = input ("Enter the initial velocity: " )
 v = float(v) #suggested v!=0
 ep = input ("Enter the couping value: " )
 ep = float(ep) 
-c_i = input ("Enter the coefficient i: " )
+c_i = input ("Coefficient of state i: " )
 c_i = float(c_i) 
-c_j = input ("Enter the coefficient j: " )
+c_j = input ("Coefficient of state j: " )
 c_j = float(c_j) 
 
 
@@ -111,9 +111,9 @@ I = np.identity(len(u))
 H = np.zeros([len(u),len(u)])
 I_rot = I[::-1]
 
-a_HO_0 = HO_aceleration(m, k, x)
-c_0 = np.array([c_i, c_j])
-norm_c_1 = c_0
+a_HO_t = HO_aceleration(m, k, x)
+c_t = np.array([c_i, c_j])
+norm_c_dt = c_t
 time = []
 pos = []
 vel = []
@@ -131,16 +131,16 @@ while(t <= t_max):
     vel.append(v)
     time.append(t)
     poten.append(u)
-    popu.append(c_0)  
-    norm.append(norm_c_1)
-    x = position(x, v, a_HO_0, dt)
-    a_HO_1 = HO_aceleration(m, k, x)
-    u = np.array([U_1(k, x), U_2(k,x)])
-    c_1 = propagator(u*I, vk, I_rot, dt).dot(c_0)
-    norm_c_1 = np.abs(c_1)
-    v = velocity(v, a_HO_0, a_HO_1, dt)
-    a_HO_0 = a_HO_1
-    c_0 = c_1
+    popu.append(c_t)  
+    norm.append(norm_c_dt)
+    x = position(x, v, a_HO_t, dt)
+    a_HO_dt = HO_aceleration(m, k, x)
+    u = np.array([U_i(k, x), U_j(k,x)])
+    c_dt = propagator(u*I, vk, I_rot, dt).dot(c_t)
+    norm_c_dt = np.abs(c_dt)
+    v = velocity(v, a_HO_t, a_HO_dt, dt)
+    a_HO_t = a_HO_dt
+    c_t = c_dt
 
     t = t + dt
 
@@ -168,7 +168,3 @@ plt.ylabel('C_1 & C_2', fontweight = 'bold', fontsize = 16)
 plt.grid(True)
 plt.legend()
 plt.show()
-
-
-
-    
