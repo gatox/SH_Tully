@@ -161,10 +161,14 @@ plt.show()
 # Plots population 
 # =============================================================================
 
-plt.plot(time,np.array(norm)[:,1], label = 'C2(t)')
-plt.plot(time,np.array(norm)[:,0], label = 'C1(t)')
+plt.plot(time,np.array(norm)[:,1], label = '|C_j(t)|')
+plt.plot(time,np.array(norm)[:,0], label = '|C_i(t)|')
 plt.xlabel('Time (fs)', fontweight = 'bold', fontsize = 16)
-plt.ylabel('C_1 & C_2', fontweight = 'bold', fontsize = 16)
+plt.ylabel('|C_i| & |C_j|', fontweight = 'bold', fontsize = 16)
 plt.grid(True)
 plt.legend()
 plt.show()
+
+
+
+    
