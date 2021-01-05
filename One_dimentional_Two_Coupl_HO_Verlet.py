@@ -149,18 +149,18 @@ while(t <= t_max):
     #Surface Hopping (Start)
     
     u_ij = np.array([U_i(k, x), U_j(k,x)])
-    c_dt = propagator(u_ij*I, vk, I_rot, dt).dot(c_t)
+    c_dt = propagator(u_ij*I, v*vk, I_rot, dt).dot(c_t)
     norm_c_dt = np.abs(c_dt)    
-    hop_ji = hopping(c_dt[1], c_t[1], c_dt[0], c_t[0], u_ij*I, vk, I_rot, dt)
+    hop_ji = hopping(c_dt[1], c_t[1], c_dt[0], c_t[0], u_ij*I, v*vk, I_rot, dt)
     hop_ji = (hop_ji > 0) * hop_ji #only positives
     r = random.uniform(0, 1)
     
     if 0 < r <= hop_ji:
         a_HO_dt = Gra_U_i(k, x)/m
-        print("Yes hopping at",t, "with r",r)
+        print("Yes hopping at",t, "with r",r, "<=",hop_ji)
     else:
         a_HO_dt = Gra_U_j(k, x)/m
-        print("No hopping at",t, "with r",r)
+        print("No hopping at",t, "with r",r, "<=",hop_ji)
         
     #Surface Hopping (End)
 
@@ -179,6 +179,18 @@ plt.plot(time,pos, label = 'x(t)')
 plt.plot(time,vel,linestyle='--', label = 'v(t)')
 plt.xlabel('Time (fs)', fontweight = 'bold', fontsize = 16)
 plt.ylabel('X(t) & V(t)', fontweight = 'bold', fontsize = 16)
+plt.grid(True)
+plt.legend()
+plt.show()
+
+# =============================================================================
+# Plots energies
+# =============================================================================
+
+plt.plot(time,np.array(poten)[:,1], label = 'E_1')
+plt.plot(time,np.array(poten)[:,0], label = 'E_0')
+plt.xlabel('Time (fs)', fontweight = 'bold', fontsize = 16)
+plt.ylabel('E_0 & E_1', fontweight = 'bold', fontsize = 16)
 plt.grid(True)
 plt.legend()
 plt.show()
