@@ -56,7 +56,7 @@ def hopping(c_j_dt, c_j_t, c_i_dt, c_i_t, h_ij, v, k_ij, dt):
 
 
 def U_i(k, x):
-    en_1 = k*(x**2)
+    en_1 = 0.5*k*(x**2)
     return en_1
 
 def Gra_U_i(k, x):
@@ -64,7 +64,7 @@ def Gra_U_i(k, x):
     return gra_u_1
 
 def U_j(k, x):
-    en_2 = k*(x-2)**2
+    en_2 = 0.5*k*(x-2)**2
     return en_2
 
 def Gra_U_j(k, x):
