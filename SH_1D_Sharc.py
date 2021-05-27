@@ -5,7 +5,7 @@ Created on Thu Dec  3 16:00:34 2020
 
 @author: edisonsalazar
 
-Trajectory Surface Hopping (Velocity-Verlet algorithm & Tully hopping for model 1)
+Trajectory Surface Hopping (Velocity-Verlet algorithm & Surface hopping: Sharc)
 
 """
 
@@ -40,20 +40,24 @@ def velocity(v, a_0, a_1, dt):
 	return v_new
 
 
-def propagator(h_ij, dt):
-    p_ij = expm( -h_ij * dt)
-    return p_ij
+#def propagator(h_ij, dt):
+#    p_ij = expm( -h_ij * dt)
+#    return p_ij
 
+def propagator(dia_ij, u_ij, uc_ij, dt):
+    p_ij = np.linalg.multi_dot([u_ij, np.diag(np.exp( -dia_ij * dt)), uc_ij])
+    return p_ij
 
 
 # Diagonal hopping (SHARC)
 def hopping(c_j_dt, c_j_t, c_i_dt, c_i_t, p_diag_ji, p_diag_ii):
-    hop_ij = (1 - ( np.abs(np.dot(c_i_dt, c_i_dt.conjugate())) )/\
-              ( np.abs(np.dot(c_i_t, c_i_t.conjugate())) ) )*\
-              ( ( np.dot(c_j_dt, np.dot(p_diag_ji.conjugate(), c_i_t.conjugate()) ) ).real/\
-               ( np.abs(np.dot(c_i_dt, c_i_dt.conjugate())) 
-                - ( np.dot(c_i_dt, np.dot(p_diag_ii.conjugate(), c_i_t.conjugate()) ) ).real))
-    return hop_ij
+    
+    hopp_factor_1 = 1 - np.abs(np.dot(c_i_dt, c_i_dt.conjugate()))/np.abs(np.dot(c_i_t, c_i_t.conjugate())) 
+    
+    hopp_factor_2 = ( np.dot(c_j_dt, np.dot(p_diag_ji.conjugate(), c_i_t.conjugate()) ) ).real/\
+               ( np.abs(np.dot(c_i_t, c_i_t.conjugate())) - ( np.dot(c_i_dt, np.dot(p_diag_ii.conjugate(), c_i_t.conjugate()) ) ).real)
+
+    return hopp_factor_1*hopp_factor_2
 
 
 # =============================================================================
@@ -64,7 +68,7 @@ print("One-dimentional MD SH: Tully's case 1")
 """Initial time"""
 t = 0.0
 time_step = float(20) #time_step = 20, equivalent to 0.484 fs
-md_step = int(1100)
+md_step = int(400)
 au1 = 0.0242  # 1 atomic unit (a.u.) of time is approximately 0.0242 fs
 dt = au1*time_step
 t_max = dt*md_step
@@ -72,7 +76,7 @@ t_max = dt*md_step
 """initial position"""
 x_0 = float(-4) 
 """initial momentum""" 
-p_0 = float(30) 
+p_0 = float(80) 
 """mass in atomic units"""
 m = 2000.0
 """initial velocity"""
@@ -84,10 +88,17 @@ c_i = float(1)
 """Excited state"""
 c_j = float(0)
 """Initial state"""
-state = 0
+if c_j > 0 and c_i < 1:
+    state = 1    
+else:
+    state = 0
+
+"""Tuned factor for coupling"""
+F = 1.0
 
 
 """Calling Tully's models:"""
+
 Tully = Tully_1(a = 0.01, b = 1.6, c = 0.005, d = 1.0)
 #Tully = Tully_2(a = 0.10, b = 0.28, c = 0.015, d = 0.06, e0 = 0.05)
 #Tully = Tully_3(a = 0.0006, b = 0.10, c = 0.90)
@@ -95,6 +106,7 @@ Tully = Tully_1(a = 0.01, b = 1.6, c = 0.005, d = 1.0)
 
 """Initial coefficient vetor in diagonal basis"""
 c_diag = np.array([c_i,c_j], dtype=np.complex128)
+#rho = np.diag(c_diag)
 
 
 track_state = []
@@ -112,13 +124,14 @@ hopp = []
 # =============================================================================
 
 while(t <= t_max):
+    track_state.append(state)
     
     """ Defining the molecular Coulomb Hamiltonian (MCH) matrix and 
         the nonadiabatic coupling matrix.
     """
     H_MCH = np.diag(Tully._energy(x_0))
     
-    K_MCH = Tully._a_coupling(x_0)
+    K_MCH = F*Tully._a_coupling(x_0)
     
     """ Diagonalising the MCH matrix.
     """
@@ -134,6 +147,7 @@ while(t <= t_max):
     
     G_diag = np.diag(np.dot(U.T.conj(), np.dot(G_MCH, U)))
     
+    
     """ Computing the aceleration at t.
     """
     
@@ -145,9 +159,9 @@ while(t <= t_max):
     
     x_dt = position(x_0, v_0, a_t, dt)
     
-    H_MCH_dt = Tully._di_energy(x_dt)
+    H_MCH_dt = np.diag(Tully._energy(x_dt))
     
-    K_MCH_dt = Tully._a_coupling(x_dt)
+    K_MCH_dt = F*Tully._a_coupling(x_dt)
     
     Ene_dt, U_dt = np.linalg.eigh(H_MCH_dt)
 
@@ -163,30 +177,43 @@ while(t <= t_max):
     
     H_av = 0.5*( 1j*np.diag(Ene + Ene_dt) + v_0*(K_MCH + K_MCH_dt ) )
     
-    p_MCH_dt = propagator(H_av, dt)
+    E_av_eig, U_av = np.linalg.eigh(H_av)
+    
+    UT_av = U_av.T.conj()
+    
+    
+    p_MCH_dt = propagator(E_av_eig, U_av, UT_av, dt)
     
     p_diag_dt = np.dot(U_dt.T.conj(), np.dot(p_MCH_dt, U))
     
     c_diag_dt = np.dot(p_diag_dt,c_diag)
+    
+    #p_diag_dt = propagator(E_av_eig, U_av, UT_av, dt)
+    
+    #p_diag_T_dt = p_diag_dt.T.conj()
+    
+    #rho_dt = np.linalg.multi_dot([p_diag_T_dt, rho, p_diag_dt])
+    #c_diag_dt = np.diag(rho_dt)
+    
     
     norm_c_diag_dt = np.abs(c_diag_dt)
     
     """ Computing hopping from state_i -> state_j and the new aceleration
     """
     
-    hop_ij = hopping(c_diag_dt[1], c_diag[1], c_diag_dt[0], c_diag[0], 
-                     p_diag_dt[1,0], p_diag_dt[0,0])
+    hop_ij = hopping(c_diag_dt[1 -state], c_diag[1 -state], c_diag_dt[state], c_diag[state], 
+                     p_diag_dt[1-state,state], p_diag_dt[state,state])
+    if hop_ij < 0:
+        hop_ij = 0.0
     
     r = random.uniform(0, 1)
     
     if 0 < r <= hop_ij:
-        state = 1
+        state = 1 -state
         a_dt = - G_diag[state]/m
-        #print("Yes hopping at",t, "with r",r, "<=",hop_ij)
     else:
-        state = 0
+        state = state
         a_dt = - G_diag[state]/m
-        #print("No hopping at",t, "with r",r, "<=",hop_ij)
         
     """ Computing the new velocity and update the time 
     """
@@ -200,11 +227,11 @@ while(t <= t_max):
     hopp.append(hop_ij)
     poten.append(Ene)
     cou.append(K_MCH[0,1])
-    track_state.append(state)
     
     x_0 = x_dt
     v_0 = v_dt
     a_t = a_dt
+    #rho = rho_dt
     c_diag = c_diag_dt
     
     
@@ -272,6 +299,12 @@ plt.grid(True)
 plt.legend()
 plt.show()   
     
+# =============================================================================
+# Printing md_step, time, hopping probability, coupling and current state
+# =============================================================================
+
+for i in range(md_step):
+    print(i+1," ",time[i]," ",hopp[i]," ",cou[i] , " ",track_state[i])
 
 
 
