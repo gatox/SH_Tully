@@ -73,9 +73,9 @@ t_max = dt*md_step
 
 """Calling Tully's models:"""
 
-#Tully = Tully_1(a = 0.01, b = 1.6, c = 0.005, d = 1.0)
+Tully = Tully_1(a = 0.01, b = 1.6, c = 0.005, d = 1.0)
 #Tully = Tully_2(a = 0.10, b = 0.28, c = 0.015, d = 0.06, e0 = 0.05)
-Tully = Tully_3(a = 0.0006, b = 0.10, c = 0.90)
+#Tully = Tully_3(a = 0.0006, b = 0.10, c = 0.90)
 #Tully = Tully_4(a = 0.0006, b = 0.10, c = 0.90, d = 4.0)
 
 # =============================================================================
@@ -83,43 +83,44 @@ Tully = Tully_3(a = 0.0006, b = 0.10, c = 0.90)
 # =============================================================================
 
 
-#initial position
+""" Initial position"""
 x_0 = float(-4) 
-#initial momentum 
+""" Initial momentum """ 
 p_0 = float(80) 
-# mass atomic units
+""" Mass atomic units """
 m = 2000.0
-#initial velocity
+""" Initial velocity """
 v_0 = p_0 / m
-#number of states
+""" Number of states """
 nstates = int(2)
-#Ground state
+""" Ground state """
 c_i = float(1)
-#Excited state
+""" Excited state """
 c_j = float(0)
-#Tuned factor for coupling
-F = 1.0
+""" Tuned factor for coupling """
+F = 10.0
 
 
-
+""" Time t_0 """
 t = 0.0
 
 
 
-#density matrix
+""" Density matrix """
 rho = np.zeros([ nstates, nstates ], dtype=np.complex128)
 
-#Choose if the initial state is GS or Exc.State
+"""Choosing the initial state; GS or Exc.State and 
+   computing the aceleration at t_0
+"""
+
 if c_j > 0 and c_i < 1:
     state = 1
     a_HO_t = -Tully._gradient(x_0)[state]/m
-    #a_HO_t = -Gra_U_j(a,b,c,d,x_0)/m
     rho[1,1] = c_j
     
 else:
     state = 0
     a_HO_t = -Tully._gradient(x_0)[state]/m
-    #a_HO_t = -Gra_U_i(a,b,c,d,x_0)/m
     rho[0,0] = c_i
     
 
@@ -147,7 +148,8 @@ hopp = []
 # =============================================================================
 while(t <= t_max):
     track_state.append(state)
-    #Time in t_0
+    """ Computing Hamiltonian and NAC at time t_0 
+    """
     
     #u_ij = Tully._di_energy(x_0)
     u_ij = np.diag(Tully._energy(x_0))
@@ -158,7 +160,9 @@ while(t <= t_max):
     H = (u_ij) - 1j*(v_0*vk)
     
     
-    #Time in t_0 + dt
+    """ Computing Hamiltonian and NAC at time t_0 + dt 
+    """
+    
     x_dt = position(x_0, v_0, a_HO_t, dt)
     
     
@@ -169,7 +173,9 @@ while(t <= t_max):
     
     H_dt = (u_ij_dt) - 1j*(v_0*vk_dt)
     
-    # Averaged Hamiltonian
+    """ Averaged Hamiltonian. Computing propagation and coefficients  
+    """
+    
     H_av= 0.5*(H + H_dt)
     
     E_av_eig_dt, U_av_dt = np.linalg.eigh(H_av)
@@ -187,16 +193,15 @@ while(t <= t_max):
     norm_c_dt_abs = np.abs(c_dt) 
     norm_c_dt_real = np.real(c_dt)
     
-    
-    
-    hop_ji = hopping(state, rho_dt, H_av, dt)
+    """ Computing hopping from state_i -> state_j and the new aceleration
+    """
+    hop_ij = hopping(state, rho_dt, H_av, dt)
 
     
     r = random.uniform(0, 1)
-    acc_prob = np.cumsum(hop_ji)
+    acc_prob = np.cumsum(hop_ij)
     hops = np.less(r, acc_prob)
     
-    #if 0 < r <= hop_ji:
     if any(hops):
         state = 1 - state
         a_HO_dt = -Tully._gradient(x_0)[state]/m
@@ -204,7 +209,8 @@ while(t <= t_max):
         state = state
         a_HO_dt = -Tully._gradient(x_0)[state]/m
         
-        
+    """ Computing the new velocity and update the time 
+    """
     
     v_dt = velocity(v_0, a_HO_t, a_HO_dt, dt)
     
