@@ -47,7 +47,7 @@ class TullySampler(DynSamplerBase):
             self.crd = random.random()*(-15.0)
             
         self.momentum = random.random()*(30.0)
-        return DynSamplerBase.condition(self.crd, self.mass*self.momentum, self.state)
+        return DynSamplerBase.condition(self.crd, self.momentum/self.mass, self.state)
  
 
 if __name__=="__main__":
