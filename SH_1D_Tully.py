@@ -57,13 +57,7 @@ def hopping(state, rho, h_ij, dt):
 # =============================================================================
 print("One-dimentional MD SH: Tully's models")
 
-"""Initial time"""
-t = 0.0
-time_step = float(20) #time_step = 20, equivalent to 0.484 fs
-md_step = int(400)
-au1 = 0.0242  # 1 atomic unit (a.u.) of time is approximately 0.0242 fs
-dt = au1*time_step
-t_max = dt*md_step
+
 
 # =============================================================================
 # Constants
@@ -73,8 +67,8 @@ t_max = dt*md_step
 
 """Calling Tully's models:"""
 
-Tully = Tully_1(a = 0.01, b = 1.6, c = 0.005, d = 1.0)
-#Tully = Tully_2(a = 0.10, b = 0.28, c = 0.015, d = 0.06, e0 = 0.05)
+#Tully = Tully_1(a = 0.01, b = 1.6, c = 0.005, d = 1.0)
+Tully = Tully_2(a = 0.10, b = 0.28, c = 0.015, d = 0.06, e0 = 0.05)
 #Tully = Tully_3(a = 0.0006, b = 0.10, c = 0.90)
 #Tully = Tully_4(a = 0.0006, b = 0.10, c = 0.90, d = 4.0)
 
@@ -84,9 +78,9 @@ Tully = Tully_1(a = 0.01, b = 1.6, c = 0.005, d = 1.0)
 
 
 """ Initial position"""
-x_0 = float(-4) 
+x_0 = float(-5) 
 """ Initial momentum """ 
-p_0 = float(80) 
+p_0 = float(8) 
 """ Mass atomic units """
 m = 2000.0
 """ Initial velocity """
@@ -94,15 +88,26 @@ v_0 = p_0 / m
 """ Number of states """
 nstates = int(2)
 """ Ground state """
-c_i = float(1)
+c_i = float(0)
 """ Excited state """
-c_j = float(0)
-""" Tuned factor for coupling """
-F = 10.0
+c_j = float(1)
+""" Tuned factor for coupling in adiabatic basis """
+F = 1.0
+""" Adiabatic (1) or Diabatic (0)"""
+representation = 0
 
 
-""" Time t_0 """
+"""Initial time"""
 t = 0.0
+
+#time_step = float(20) #time_step = 20, equivalent to 0.484 fs
+#md_step = int(400)
+#au1 = 0.0242  # 1 atomic unit (a.u.) of time is approximately 0.0242 fs
+#dt = au1*time_step
+#t_max = dt*md_step
+dt = np.abs(0.05/v_0)
+t_max = 2.0*np.abs(x_0/v_0)
+md_step = int(t_max / dt)
 
 
 
@@ -150,9 +155,12 @@ while(t <= t_max):
     track_state.append(state)
     """ Computing Hamiltonian and NAC at time t_0 
     """
-    
-    #u_ij = Tully._di_energy(x_0)
-    u_ij = np.diag(Tully._energy(x_0))
+    if representation == 1:
+        u_ij = np.diag(Tully._energy(x_0)) #adiabatic representation at t_0
+    else:
+        u_ij = Tully._di_energy(x_0)       #diabatic representation at t_0
+        F = 0.0
+        
     vk = F*Tully._a_coupling(x_0)
     
     Ene, U = np.linalg.eigh(u_ij)
@@ -165,15 +173,25 @@ while(t <= t_max):
     
     x_dt = position(x_0, v_0, a_HO_t, dt)
     
-    
-    #u_ij_dt = Tully._di_energy(x_dt)
-    u_ij_dt = np.diag(Tully._energy(x_dt))
+    if representation == 1:
+        u_ij_dt = np.diag(Tully._energy(x_dt)) #adiabatic representation at t_0 + dt
+    else:
+        u_ij_dt = Tully._di_energy(x_dt)       #diabatic representation at t_0 + dt
+        F = 0.0
+
     vk_dt = F*Tully._a_coupling(x_dt)
 
     
     H_dt = (u_ij_dt) - 1j*(v_0*vk_dt)
     
-    """ Averaged Hamiltonian. Computing propagation and coefficients  
+    """ Averaged Hamiltonian (middle point between H(t) and H(t+dt))
+          
+        Computing propagation and coefficients:
+            rho_ij(t) = c_i(t)*c_j(t)^{*}
+            as c(t+dt) = U*exp(-j*D*dt)*U.T*c(t)
+            then rho_ij(t+dt) = c_i(t+dt)*c_j(t+dt)^{*}
+                              = U*exp(-j*D*dt)*U.T*c_i(t)*c_j(t)^{*}*U*exp(j*D*dt)*U.T
+                              = U*exp(-j*D*dt)*U.T*rho_ij(t)*U*exp(j*D*dt)*U.T
     """
     
     H_av= 0.5*(H + H_dt)
@@ -195,7 +213,7 @@ while(t <= t_max):
     
     """ Computing hopping from state_i -> state_j and the new aceleration
     """
-    hop_ij = hopping(state, rho_dt, H_av, dt)
+    hop_ij = hopping(state, rho, H_av, dt)
 
     
     r = random.uniform(0, 1)
@@ -228,7 +246,6 @@ while(t <= t_max):
     v_0 = v_dt
     a_HO_t = a_HO_dt
     rho = rho_dt
-    c_t = c_dt
     
     
     t = t + dt
