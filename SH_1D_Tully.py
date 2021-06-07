@@ -67,8 +67,8 @@ print("One-dimentional MD SH: Tully's models")
 
 """Calling Tully's models:"""
 
-#Tully = Tully_1(a = 0.01, b = 1.6, c = 0.005, d = 1.0)
-Tully = Tully_2(a = 0.10, b = 0.28, c = 0.015, d = 0.06, e0 = 0.05)
+Tully = Tully_1(a = 0.01, b = 1.6, c = 0.005, d = 1.0)
+#Tully = Tully_2(a = 0.10, b = 0.28, c = 0.015, d = 0.06, e0 = 0.05)
 #Tully = Tully_3(a = 0.0006, b = 0.10, c = 0.90)
 #Tully = Tully_4(a = 0.0006, b = 0.10, c = 0.90, d = 4.0)
 
@@ -80,7 +80,7 @@ Tully = Tully_2(a = 0.10, b = 0.28, c = 0.015, d = 0.06, e0 = 0.05)
 """ Initial position"""
 x_0 = float(-5) 
 """ Initial momentum """ 
-p_0 = float(8) 
+p_0 = float(20) 
 """ Mass atomic units """
 m = 2000.0
 """ Initial velocity """
@@ -92,19 +92,20 @@ c_i = float(0)
 """ Excited state """
 c_j = float(1)
 """ Tuned factor for coupling in adiabatic basis """
-F = 1.0
-""" Adiabatic (1) or Diabatic (0)"""
-representation = 0
+F = 30.0
 
+""" Adiabatic (1) or Diabatic (0)"""
+representation = 1
+
+"""Appiying adjutment of momentum
+   yes = True;
+   no = False
+"""
+momentum_change = "False"
 
 """Initial time"""
 t = 0.0
 
-#time_step = float(20) #time_step = 20, equivalent to 0.484 fs
-#md_step = int(400)
-#au1 = 0.0242  # 1 atomic unit (a.u.) of time is approximately 0.0242 fs
-#dt = au1*time_step
-#t_max = dt*md_step
 dt = np.abs(0.05/v_0)
 t_max = 2.0*np.abs(x_0/v_0)
 md_step = int(t_max / dt)
@@ -121,18 +122,14 @@ rho = np.zeros([ nstates, nstates ], dtype=np.complex128)
 if c_j > 0 and c_i < 1:
     state = 1
     a_HO_t = -Tully._gradient(x_0)[state]/m
-    rho[1,1] = c_j
     
 else:
     state = 0
     a_HO_t = -Tully._gradient(x_0)[state]/m
-    rho[0,0] = c_i
     
+rho[1,1] = c_j
+rho[0,0] = c_i
 
-c_t = np.array([c_i, c_j])
-norm_c_dt = np.zeros([ nstates])
-norm_c_dt_abs = np.zeros([ nstates])
-norm_c_dt_real = np.zeros([ nstates])
 
 track_state = []
 time = []
@@ -143,8 +140,8 @@ poten = []
 den = []
 popu = []
 norm_real = []
-norm_abs = []
 hopp = []
+hopp_2 = []
 
 
 
@@ -208,10 +205,10 @@ while(t <= t_max):
     c_dt = np.diag(rho_dt)
     
 
-    norm_c_dt_abs = np.abs(c_dt) 
     norm_c_dt_real = np.real(c_dt)
     
-    """ Computing hopping from state_i -> state_j and the new aceleration
+    """ Computing hopping from state_i -> state_j and the new aceleration. 
+        Additionally, the momentum is adjusted
     """
     hop_ij = hopping(state, rho, H_av, dt)
 
@@ -219,13 +216,35 @@ while(t <= t_max):
     r = random.uniform(0, 1)
     acc_prob = np.cumsum(hop_ij)
     hops = np.less(r, acc_prob)
+    diff_ji = E_av_eig_dt[1-state] -E_av_eig_dt[state]
+    beta_ji = v_0*(0.5)*(vk[1-state,state] + vk_dt[1-state,state])
+    alpha_ji = 0.5*( ((0.5)*(vk[1-state,state] + vk_dt[1-state,state]))**2 )/m
     
-    if any(hops):
+    if representation == 1:
+        hops_2 = (((beta_ji)**2/(4*alpha_ji)) >= diff_ji)
+    else:
+        hops_2 = "True"
+    
+    if any(hops) and hops_2:
         state = 1 - state
-        a_HO_dt = -Tully._gradient(x_0)[state]/m
+        a_HO_dt = -Tully._gradient(x_dt)[state]/m
+        
+        """If the hopping is succeeded, then an adjustment 
+           in the velocity is performed in order to preserve 
+           the total energy 
+        """
+        if momentum_change  == "True":
+            if (beta_ji < 0.0):
+                gama_ji = (beta_ji + np.sqrt(beta_ji**2 + 4*alpha_ji*diff_ji))/(2*alpha_ji)
+                v_0 = v_0 - gama_ji*(vk[1-state,state]/m)
+            else:
+                gama_ji = (beta_ji - np.sqrt(beta_ji**2 + 4*alpha_ji*diff_ji))/(2*alpha_ji)
+                v_0 = v_0 - gama_ji*(vk[1-state,state]/m)
+            
+
     else:
         state = state
-        a_HO_dt = -Tully._gradient(x_0)[state]/m
+        a_HO_dt = -Tully._gradient(x_dt)[state]/m
         
     """ Computing the new velocity and update the time 
     """
@@ -236,8 +255,8 @@ while(t <= t_max):
     vel.append(v_0)
     time.append(t)
     norm_real.append(norm_c_dt_real)
-    norm_abs.append(norm_c_dt_abs)
     hopp.append(hops)
+    hopp_2.append(hops_2)
     poten.append(Ene)
     cou.append(vk[0,1])
 
@@ -299,17 +318,6 @@ plt.grid(True)
 plt.legend()
 plt.show()
 
-# =============================================================================
-# Plots population abs
-# =============================================================================
-
-plt.plot(time,np.array(norm_abs)[:,1], label = '|C_j(t)|')
-plt.plot(time,np.array(norm_abs)[:,0], label = '|C_i(t)|')
-plt.xlabel('Time (fs)', fontweight = 'bold', fontsize = 16)
-plt.ylabel('Abs|C_i| & Abs|C_j|', fontweight = 'bold', fontsize = 16)
-plt.grid(True)
-plt.legend()
-plt.show()
 
 # =============================================================================
 # Plots energies vs position
@@ -329,4 +337,4 @@ plt.show()
 # =============================================================================
 
 for i in range(md_step):
-    print(i+1," ",time[i]," ",hopp[i]," ",cou[i] , " ",track_state[i])
+    print(i+1," ",time[i]," ",hopp[i]," ",hopp_2[i]," ",cou[i] , " ",track_state[i])
