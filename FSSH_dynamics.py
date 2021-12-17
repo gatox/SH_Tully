@@ -24,9 +24,9 @@ class FSSH_dynamics:
         self.dt = np.abs(0.05/v_0)
         self.t_max = 2.0*np.abs(self.x_0/self.v_0)
         self.md_step = int(self.t_max / self.dt)
-        #self.electronic = SurfaceHopping(self.nstates)
-        self.electronic = BornOppenheimer(self.nstates)
         self.State = State(self.x_0, self.v_0, self.mass, self.instate, self.nstates, self.states, self.ncoeff)
+        self.electronic = SurfaceHopping(self.nstates)
+        #self.electronic = BornOppenheimer(self.nstates)
     
     def run(self):
         
@@ -34,31 +34,38 @@ class FSSH_dynamics:
             raise SystemExit("Noting to be done")
         
         State = self.State
-        electronic = self.electronic
         
-        ene, u, nac, grad_old = self.get_ene_nac_grad_diag(State.crd) #Verlet: diag. at x_0
+        ene, u, nac, grad_old = self.get_ene_nac_grad(State.crd)
+
+        grad_old_diag = self.grad_diag(grad_old, u)
+        acce_old = aceleration(grad_old_diag, State)
         State.epot = ene[State.instate]
         vk = self.vk_coupl_matrix(State.vel, nac)
        
         print_head()
         while(self.t <= self.t_max):
-            crd_new = update_coordinates(State, grad_old_diag[State.instate], self.dt)
-            ene_new, u_new, nac_new, grad_new_diag = self.get_ene_nac_grad_diag(crd_new) #Verlet: diag. at x_dt
-            c_diag, c_diag_new = self.diag_propagator(u, u_new, ene, vk,  State) 
-            
-
-            vel_new = update_velocities(State, grad_old_diag[State.instate], grad_new_diag[State.instate], self.dt)
-            print_var(self.t, State)
-            State, grad_dia_old = update_state(State, crd_new, vel_new), grad_dia_new
-           
+            """updating coordinates"""
+            crd_new = position(State, acce_old, self.dt)
+            """computing coefficients and hopping probabilities"""    
+            ene_new, u_new, nac_new, grad_new = self.get_ene_nac_grad(crd_new)
+            c_diag, c_diag_new, p_diag_new = self.diag_propagator(u, u_new, ene, vk, State) 
+            probs = self.probabilities(State, c_diag_new, c_diag, p_diag_new) 
+            State, acce_new, r, acc_probs = self.new_surface(State, grad_new, nac, nac_new, u_new, probs, ene_new)
+            """updating velocities"""
+            vel_new = velocity(State, acce_old, acce_new, self.dt)
+            print_var(self.t, self.dt, r, acc_probs, State)
+            """updating variables in State"""
+            State = update_state(State, ene_new, crd_new, vel_new, u_new, c_diag_new) 
+            vk = self.vk_coupl_matrix(State.vel, nac_new) 
+            acce_old, u, ene, nac = acce_new, u_new, ene_new, nac_new 
             self.t += self.dt 
-        return State
+        return State, print_bottom()
     
-    def rho_matrix(self, State):
+    def population(self, State):
         rho = np.zeros(self.nstates)
         for i in range(self.nstates):
             rho[i] = np.dot(State.ncoeff[i],State.ncoeff.conj()[i]).real
-        return np.diag(rho)
+        return rho
 
     def vk_coupl_matrix(self, vel, nac):
         vk = np.zeros((self.nstates,self.nstates))
@@ -77,30 +84,23 @@ class FSSH_dynamics:
                         vk[j,i] = -vk[i,j]
             return vk
           
-    def grad_matrix(self, g_mch, ene, nac, u):
+    def grad_diag(self, g_mch, u):
         g_diag = {}
         for i in range(self.nstates):
-            for j in range(self.nstates):
-                if i < j:
-                    prod = (u.T.conj()[i][j]*u[i][j]).real*(ene[j]- ene[i])*nac[i,j]
-                    g_diag.update({(i,j): prod})
-                    g_diag.update({(j,i):-prod})
-                elif i == j:
-                    g_diag.update({(i,j):(u.T.conj()[i][j]*u[i][j]).real*g_mch[i]})
+            g_diag.update({i:np.dot(u.T.conj()[i,:],u[:,i]).real*g_mch[i]})
         return g_diag
 
-    def get_ene_nac_grad_diag(self, crd):
+    def get_ene_nac_grad(self, crd):
         h_mch = self.electronic.get_energy(crd)
         grad_old = self.electronic.get_gradient(crd)
         nac = self.electronic.get_coupling(crd)
-        ene, u = np.linalg.eigh(h_mch)
-        grad_old_diag = self.grad_matrix(grad_old, ene, nac, u)
-        return ene, u, nac, grad_old_diag
+        ene, u = np.linalg.eigh(np.diag(h_mch))
+        return ene, u, nac, grad_old
 
     def mch_propagator(self, h_mch, vk):
         h_total = np.diag(h_mch) - 1j*(vk) 
         ene, u = np.linalg.eigh(h_total)
-        p_mch = np.linalg.multi_dot([u, np.diag(np.exp( -1j * np.diag(ene) * self.dt)), u.T.conj()])
+        p_mch = np.linalg.multi_dot([u, np.diag(np.exp( -1j * ene * self.dt)), u.T.conj()])
         return p_mch
 
     def diag_propagator(self, u, u_new, h_mch, vk,  State):
@@ -111,7 +111,7 @@ class FSSH_dynamics:
         p_mch_new = self.mch_propagator(h_mch, vk)
         p_diag_new = np.dot(u_new.T.conj() ,np.dot(p_mch_new,u))
         c_diag_new = np.dot(p_diag_new,c_diag) 
-        return c_diag, c_diag_new
+        return c_diag, c_diag_new, p_diag_new
 
     def hopping_probability(self, c_j_dt, c_i_dt, c_i_t, p_diag_ji, p_diag_ii): 
         prob_factor_1 = 1 - np.abs(np.dot(c_i_dt, c_i_dt.conj()))/np.abs(np.dot(c_i_t, c_i_t.conj())) 
@@ -126,8 +126,9 @@ class FSSH_dynamics:
             prob_ji = prob_factor_1*((prob_factor_2_N/prob_factor_2_D))
         return prob_ji
     
-    def probabilities(self, instate, c_diag_dt, c_diag, p_diag_dt):
+    def probabilities(self, State, c_diag_dt, c_diag, p_diag_dt):
         probs = np.zeros(self.nstates)
+        instate = State.instate
         for i in range(self.nstates):
             probs[i] = self.hopping_probability(c_diag_dt[i], c_diag_dt[instate],\
                                                 c_diag[instate],p_diag_dt[i,instate], p_diag_dt[instate,instate])
@@ -147,66 +148,73 @@ class FSSH_dynamics:
         if np.isscalar(vel):
             return vel*nac_av
         else:
-            beta = 0.0
-            dim = len(self.mass)  
-            for i in range(dim):
-                beta +=  np.dot(vel[i],nac_av[i])
-            return beta
+            return np.dot(vel.flatten(),nac_av.flatten())
     
     def alpha_ji(self, nac_av):
         if np.isscalar(self.mass):
             return 0.5*(nac_av ** 2 )/self.mass
         else:
             alpha = 0.0
-            dim = len(self.mass)
-            for i in range(dim):
-                alpha += np.dot(nac_av[i], nac_av[i])/self.mass[i]
+            for i, m in enumerate(self.mass):
+                alpha += np.dot(nac_av[i], nac_av[i])/m
             return 0.5*alpha
 
-    def new_surface(self, G_dt, State, v_0, Ene_dt, nac_old, nac_new, U_dt, probs, ene_new):
-            
-        r = random.uniform(0, 1)
+    def new_surface(self, State, grad_new, nac_old, nac_new, u_new, probs, ene_new):            
+        r = random.uniform(0,1)
         acc_probs = np.cumsum(probs)
         hopps = np.less(r, acc_probs)
         instate = State.instate
         if any(hopps): 
             for i in range(self.nstates):
                 if hopps[i]:
-                    state_to = States.states[i]
+                    state_to = State.states[i]
                     break
             nac_av = self.nac_average(instate,state_to,nac_old,nac_new)
             diff = self.diff_ji(instate,state_to,ene_new)
             beta = self.beta_ji(State.vel, nac_av)
             alpha = self.alpha_ji(nac_av)
-            if (beta**2 - 4*alpha*diff) < 0:
+            if (beta**2 - 4*alpha*diff) < 0.0:
                 """
                 If this condition is satisfied, there is not hopping and 
                 then the nuclear velocity simply are reversed.
                 """
-                G_diag_dt = self.gradient(G_dt, state, Ene_dt, NAC_dt, U_dt)
-                a_dt = aceleration(G_diag_dt, self.mass)
+                g_diag_dt = self.grad_diag(grad_new, u_new)
+                a_dt = aceleration(g_diag_dt, State)
                 gama_ji = beta/alpha
-                v_0 = v_0 - gama_ji*(NAC_av/self.mass)
+                if np.isscalar(State.vel) and np.isscalar(self.mass):
+                    State.vel = State.vel - gama_ji*(nac_av/self.mass)
+                else:
+                    for i, m in enumerate(self.mass):
+                        State.vel[i] = State.vel[i] - gama_ji*(nac_av[i]/m)
             else:
                 """
                 If this condition is satisfied, a hopping from 
                 current state to the first true state takes place 
                 and the current nuclear velocity is ajusted in order 
-                to preserve the total energy
+                to preserve the total energy.
                 """
-                state = state_to
-                G_diag_dt = self.gradient(G_dt, state, Ene_dt, NAC_dt, U_dt)
-                a_dt = aceleration(G_diag_dt, self.mass)
+                State.instate = state_to
+                g_diag_dt = self.grad_diag(grad_new, u_new)
+                a_dt = aceleration(g_diag_dt, State)
                 if (beta < 0.0):
                     gama_ji = (beta + np.sqrt(beta**2 + 4*alpha*diff))/(2*alpha)
-                    v_0 = v_0 - gama_ji*(NAC_av/self.mass)
+                    if np.isscalar(State.vel) and np.isscalar(self.mass):
+                        State.vel = State.vel - gama_ji*(nac_av/self.mass)
+                    else:
+                        for i, m in enumerate(self.mass):
+                            State.vel[i] = State.vel[i] - gama_ji*(nac_av[i]/m)
                 else:
                     gama_ji = (beta - np.sqrt(beta**2 + 4*alpha*diff))/(2*alpha)
-                    v_0 = v_0 - gama_ji*(NAC_av/self.mass)
+
+                    if np.isscalar(State.vel) and np.isscalar(self.mass):
+                        State.vel = State.vel - gama_ji*(nac_av/self.mass)
+                    else:
+                        for i, m in enumerate(self.mass):
+                            State.vel[i] = State.vel[i] - gama_ji*(nac_av[i]/m)
         else:
-            G_diag_dt = self.gradient(G_dt, state, Ene_dt, NAC_dt, U_dt)
-            a_dt = aceleration(G_diag_dt, self.mass)
-        return state, v_0, a_dt, r, acc_probs[state]
+            g_diag_dt = self.grad_diag(grad_new, u_new)
+            a_dt = aceleration(g_diag_dt, State)
+        return State, a_dt, r, acc_probs[State.instate]
 
 class Electronic:
 
@@ -221,7 +229,7 @@ class Electronic:
         result = self.spp.request(crd, ['gradient'])
         return result['gradient']
 
-    def rescale_velocity(self, state):
+    def rescale_velocity(self, instate):
         pass
 
     def get_energy(self, crd):
@@ -236,17 +244,15 @@ class SurfaceHopping(Electronic):
 
     needed_properties = ["energy", "gradient", "coupling"]
 
-    def __init__(self, instate, nstates, ncoeff):
-        self.instate = instate
+    def __init__(self, nstates):
         self.nstates = nstates
-        self.ncoeff = ncoeff
         self.spp = SurfacePointProvider.from_questions(["energy","gradient","coupling"], self.nstates, 1, config ="FSSH.in")
 
     def get_gradient(self, crd):
         result = self.spp.request(crd, ['gradient'])
         return result['gradient']
 
-    def rescale_velocity(self, state):
+    def rescale_velocity(self, instate):
         pass
 
     def get_energy(self, crd):
@@ -284,16 +290,12 @@ class State:
         self.states = states
         self.ncoeff = ncoeff
         self.ekin = cal_ekin(mass, vel)
-        self.electronic = Electronic(self.nstates)
         self.epot = 0
-        self.etot = self.ekin + self.epot
     
     @classmethod
     def from_initial(cls, crd, vel, mass, instate, nstates, states, ncoeff):
         ekin = cal_ekin(mass, vel)
-        epot = 0
-        etot = ekin + epot
-        return cls(crd, vel, mass, instate, nstates, states, ncoeff, ekin, epot, etot)
+        return cls(crd, vel, mass, instate, nstates, states, ncoeff, ekin, epot)
 
 def cal_ekin(mass, vel):
     ekin = 0
@@ -304,50 +306,41 @@ def cal_ekin(mass, vel):
             ekin += 0.5*m*np.dot(vel[i],vel[i])
     return ekin
 
-
-def update_coordinates(State, grad, dt):
-    acce = aceleration(grad, State)
-    crd_update = position(State.crd, State.vel, acce, dt)
-    return crd_update
-
-def update_velocities(State, grad_old, grad_new, dt):
-    acce_old = aceleration(grad_old, State)
-    acce_new = aceleration(grad_new, State)
-    vel_update = velocity(State.vel, acce_old, acce_new, dt)
-    return vel_update
-
-def update_state(State, poten, crd_new, vel_new):
+def update_state(State, ene_new, crd_new, vel_new, u_new, c_diag_new):
     State.crd = crd_new
     State.vel = vel_new
     State.ekin = cal_ekin(State.mass, vel_new)
-    State.epot = poten
-    State.etot = State.ekin + State.epot
+    State.epot = ene_new[State.instate]
+    State.ncoeff = np.dot(u_new, c_diag_new)
     return State
 
 def aceleration(grad, State):
-    return -grad/State.mass
+    return -grad[State.instate]/State.mass
 
-def position(x_0, v_0, a_0, dt):
-    return x_0 + v_0*dt + 0.5*a_0*dt**2
+def position(State, a_0, dt):
+    return State.crd + State.vel*dt + 0.5*a_0*dt**2
 
-def velocity(self, v_0, a_0, a_1, dt):
-    return v_0 + 0.5*(a_0 + a_1)*dt
+def velocity(State, a_0, a_1, dt):
+    return State.vel + 0.5*(a_0 + a_1)*dt
  
 
 def print_head():
-    dash = '-' * 81
+    dash = '-' * 141
     print(dash)
-    Header = ["Time", "Position", "Velocity", "E_Kinetic", "E_Potential" ,\
-          "E_Total", "State"]
-    print(f"{Header[0]:>6s} {Header[1]:>10s} {Header[2]:>10s}"\
-               f"{Header[3]:>13s} {Header[4]:>13s} {Header[5]:>13s} {Header[6]:>9s}")
+    Header = ["MD_steps", "Time", "Position", "Velocity", "E_kinetic",\
+                 "E_potential", "E_Total", "Hopping_P", "Random", "State"]
+    print(f"{Header[0]:>10s} {Header[1]:>10s} {Header[2]:>14s} {Header[3]:>14s}"\
+                f"{Header[4]:>15s} {Header[5]:>17s} {Header[6]:>13s} {Header[7]:>15s} {Header[8]:>11s}  {Header[9]:>11s}")
     print(dash)
 
-def print_var(t, State):
-    Var = (t,State.crd,State.vel,State.ekin,State.epot,State.etot,State.instate)
-    print(f"{Var[0]:>6.2f} {Var[1]:>10.3f} {Var[2]:>10.3f}"\
-                f"{Var[3]:>13.3f} {Var[4]:>13.3f} {Var[5]:>13.3f} {Var[6]:>9.0f}")
+def print_var(t, dt, r, acc_probs, State):
+    Var = (int(t/dt)+1,t,State.crd,State.vel,State.ekin,State.epot,State.ekin + State.epot,acc_probs,r,State.instate)
+    print(f"{Var[0]:>10.0f} {Var[1]:>10.3f} {Var[2]:>14.4f}"\
+                f"{Var[3]:>14.4f} {Var[4]:>15.4f} {Var[5]:>17.4f} {Var[6]:>13.4f} {Var[7]:>15.4f} {Var[8]:>11.4f} {Var[9]:>11.0f}")
 
+def print_bottom():
+    dash = '-' * 141
+    print(dash)
 
 if __name__=="__main__":
 #    HO = Electronic(0,2)
