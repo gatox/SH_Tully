@@ -150,6 +150,14 @@ class FSSH_dynamics:
                 alpha += np.dot(nac_av[i], nac_av[i])/m
             return 0.5*alpha
 
+    def new_velocity(self, State, gama_ji, nac_av):
+        if np.isscalar(State.vel) and np.isscalar(self.mass):
+            State.vel = State.vel - gama_ji*(nac_av/self.mass)
+        else:
+            for i, m in enumerate(self.mass):
+                State.vel[i] = State.vel[i] - gama_ji*(nac_av[i]/m)
+        return State
+
     def rescale_velocity(self, State, beta, alpha, diff, grad_new, u_new, state_new, nac_av):
         if (beta**2 + 4*alpha*diff) < 0.0:
             """
@@ -159,11 +167,7 @@ class FSSH_dynamics:
             g_diag_dt = self.grad_diag(grad_new, u_new)
             a_dt = aceleration(g_diag_dt, State)
             gama_ji = beta/alpha
-            if np.isscalar(State.vel) and np.isscalar(self.mass):
-                State.vel = State.vel - gama_ji*(nac_av/self.mass)
-            else:
-                for i, m in enumerate(self.mass):
-                    State.vel[i] = State.vel[i] - gama_ji*(nac_av[i]/m)
+            State = self.new_velocity(State, gama_ji, nac_av)
         else:
             """
             If this condition is satisfied, a hopping from 
@@ -176,18 +180,10 @@ class FSSH_dynamics:
             a_dt = aceleration(g_diag_dt, State)
             if beta < 0.0:
                 gama_ji = (beta + np.sqrt(beta**2 + 4*alpha*diff))/(2*alpha)
-                if np.isscalar(State.vel) and np.isscalar(self.mass):
-                    State.vel = State.vel - gama_ji*(nac_av/self.mass)
-                else:
-                    for i, m in enumerate(self.mass):
-                        State.vel[i] = State.vel[i] - gama_ji*(nac_av[i]/m)
+                State = self.new_velocity(State, gama_ji, nac_av)
             else:
                 gama_ji = (beta - np.sqrt(beta**2 + 4*alpha*diff))/(2*alpha)
-                if np.isscalar(State.vel) and np.isscalar(self.mass):
-                    State.vel = State.vel - gama_ji*(nac_av/self.mass)
-                else:
-                    for i, m in enumerate(self.mass):
-                        State.vel[i] = State.vel[i] - gama_ji*(nac_av[i]/m)
+                State = self.new_velocity(State, gama_ji, nac_av)
         return State, a_dt 
 
     def surface_hopping(self, State, grad_new, nac_old, nac_new, u_new, probs, ene_new):            
