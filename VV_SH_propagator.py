@@ -46,21 +46,11 @@ class VelocityVerletPropagator:
         return state.crd + state.vel*dt + 0.5*a_0*dt**2
 
     def velocities(self, state, a_0, a_1, dt):
-        return state.vel + 0.5*(a_0 + a_1)*dt
- 
-    def cal_ekin(self, mass, vel):
-        ekin = 0
-        if np.isscalar(mass) and np.isscalar(vel):
-            ekin = 0.5*mass*vel**2
-        else:
-            for i, m in enumerate(mass):
-                ekin += 0.5*m*np.dot(vel[i],vel[i])
-        return ekin
+        return state.vel + 0.5*(a_0 + a_1)*dt 
 
     def update_state(self, state, acce_new, crd_new, vel_new):
         state.crd = crd_new
         state.vel = vel_new
-        state.ekin = self.cal_ekin(state.mass, vel_new)
         acce_old = acce_new
         return acce_old
 
@@ -133,14 +123,22 @@ class SurfaceHopping(BornOppenheimer):
                     if i < j:
                         vk[i,j] = vel*nac[i,j]
                         vk[j,i] = -vk[i,j]
-            return vk
         else:
             for i in range(self.nstates):
                 for j in range(self.nstates):
                     if i < j:
                         vk[i,j] = np.dot(vel.flatten(),nac[i,j].flatten())
                         vk[j,i] = -vk[i,j]
-            return vk
+        return vk
+
+    def cal_ekin(self, mass, vel):
+        ekin = 0
+        if np.isscalar(mass) and np.isscalar(vel):
+            ekin = 0.5*mass*vel**2
+        else:
+            for i, m in enumerate(mass):
+                ekin += 0.5*m*np.dot(vel[i],vel[i])
+        return ekin
 
     def setup(self, state):
         ene, u, nac, grad_old = self.get_ene_nac_grad(state.crd)
@@ -150,6 +148,7 @@ class SurfaceHopping(BornOppenheimer):
         state.u = u
         state.nac = nac
         state.vk = self.vk_coupl_matrix(state.vel, nac)
+        state.ekin = self.cal_ekin(state.mass, state.vel)
         return grad_old_diag
 
 
@@ -251,9 +250,9 @@ class SurfaceHopping(BornOppenheimer):
         return state
 
     def surface_hopping(self, state, nac_new, probs, ene_new):            
-        r = random.uniform(0,1)
+        aleatory = random.uniform(0,1)
         acc_probs = np.cumsum(probs)
-        hopps = np.less(r, acc_probs)
+        hopps = np.less(aleatory, acc_probs)
         state_old = state.instate
         nac_old = state.nac
         if any(hopps):
@@ -266,21 +265,22 @@ class SurfaceHopping(BornOppenheimer):
             beta = self.beta_ji(state.vel, nac_av)
             alpha = self.alpha_ji(nac_av)
             state = self.rescale_velocity(state, beta, alpha, diff, state_new, nac_av) 
-        return state, r, acc_probs[state.instate]
+        return state, aleatory, acc_probs[state.instate]
 
     def new_surface(self, state, crd_new, t, dt):
         ene_new, u_new, nac_new, grad_new = self.get_ene_nac_grad(crd_new)
         grad_new_diag = self.grad_diag(grad_new, u_new)
         c_diag, c_diag_new, p_diag_new = self.diag_propagator(u_new, dt, state)
         probs = self.probabilities(state, c_diag_new, c_diag, p_diag_new)
-        state, r, acc_probs = self.surface_hopping(state, nac_new, probs, ene_new)
-        print_var(t, dt, r, acc_probs, state) #printing variables 
+        state, aleatory, acc_probs = self.surface_hopping(state, nac_new, probs, ene_new)
+        print_var(t, dt, aleatory, acc_probs, state) #printing variables 
         state.ene = ene_new
         state.epot = ene_new[state.instate]
         state.u = u_new
         state.ncoeff = np.dot(state.u, c_diag_new)
         state.nac = nac_new
         state.vk = self.vk_coupl_matrix(state.vel, state.nac)
+        state.ekin = self.cal_ekin(state.mass, state.vel)
         return grad_new_diag
 
 class State:
