@@ -5,7 +5,7 @@ from abc import abstractmethod
 from tully_model_1 import Tully_1
 from tully_model_2 import Tully_2
 from pysurf.spp import ModelBase, SurfacePointProvider
-
+from colt import Colt
 
 class VelocityVerletPropagator:
 
@@ -283,7 +283,19 @@ class SurfaceHopping(BornOppenheimer):
         state.ekin = self.cal_ekin(state.mass, state.vel)
         return grad_new_diag
 
-class State:
+class State(Colt):
+
+    _questions = """ 
+    # chosen parameters
+    crd = -4.0 :: float
+    vel = 1.0 :: float
+    mass = 1.0 :: float
+    # instate is the initial state: 0 = G.S, 1 = E_1, ...
+    instate = 1 :: int
+    nstates = 2 :: int
+    states = 0 1 :: ilist
+    ncoeff = 0.0 1.0 :: flist
+    """
     
     def __init__(self, crd, vel, mass, instate, nstates, states, ncoeff):
         self.crd = crd
@@ -299,17 +311,21 @@ class State:
         self.ene = []
         self.vk = []
         self.u = []
-    
+
+    @classmethod
+    def from_config(cls, config):
+        crd = config['crd']
+        vel = config['vel']
+        mass = config['mass']
+        instate = config['instate']
+        nstates = config['nstates']
+        states = config['states']
+        ncoeff = config['ncoeff']
+        return cls(crd, vel, mass, instate, nstates, states, ncoeff) 
+
     @classmethod
     def from_initial(cls, crd, vel, mass, instate, nstates, states, ncoeff):
-        ekin = 0
-        epot = 0
-        nac = {}
-        ene = []
-        vk = []
-        u = []
-        return cls(crd, vel, mass, instate, nstates, states, ncoeff, ekin, epot, nac, ene, vk, u)
-
+        return cls(crd, vel, mass, instate, nstates, states, ncoeff)
 
 def print_head():
     dash = '-' * 141
@@ -330,9 +346,7 @@ def print_bottom():
     print(dash)
 
 if __name__=="__main__":
-    states = np.array([0,1])
-    wstates = np.array([0,1])
-    elec_state = State(-4, 1, 1, 1, 2, states, wstates)
+    elec_state = State.from_questions(config = "model_tully_1.ini")
     DY = VelocityVerletPropagator(0, elec_state)    
     try:
         result_2 = DY.run()
