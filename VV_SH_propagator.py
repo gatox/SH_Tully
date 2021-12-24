@@ -4,6 +4,8 @@ import random
 from abc import abstractmethod
 from tully_model_1 import Tully_1
 from tully_model_2 import Tully_2
+from tully_model_3 import Tully_3
+from tully_model_4 import Tully_4
 from pysurf.spp import ModelBase, SurfacePointProvider
 from colt import Colt
 
@@ -12,8 +14,8 @@ class VelocityVerletPropagator:
     def __init__(self, t, State):
         self.t = t
         self.state = State
-        self.dt = np.abs(0.05/State.vel)
-        self.t_max = 2.0*np.abs(State.crd/State.vel)
+        self.dt = np.abs(0.05/self.state.vel)
+        self.t_max = 2.0*np.abs(self.state.crd/self.state.vel)
         self.electronic = SurfaceHopping(self.state)
 
     def run(self):
@@ -60,7 +62,7 @@ class BornOppenheimer:
 
     def __init__(self, state):
         self.nstates = state.nstates
-        self.spp = SurfacePointProvider.from_questions(["energy","gradient","coupling"], self.nstates, 1, config ="FSSH.in")
+        self.spp = SurfacePointProvider.from_questions(["energy","gradient","coupling"], self.nstates, 1, config ="model_BornOppenheimer.ini")
 
     @abstractmethod
     def get_gradient(self, crd):
@@ -88,7 +90,8 @@ class SurfaceHopping(BornOppenheimer):
     def __init__(self, state):
         self.nstates = state.nstates
         self.mass = state.mass
-        self.spp = SurfacePointProvider.from_questions(["energy","gradient","coupling"], self.nstates, 1, config ="FSSH.in")
+        self.prob_name = state.prob
+        self.spp = SurfacePointProvider.from_questions(["energy","gradient","coupling"], self.nstates, 1, config ="model_SurfaceHopping.ini")
 
     def get_gradient(self, crd):
         result = self.spp.request(crd, ['gradient'])
@@ -108,6 +111,12 @@ class SurfaceHopping(BornOppenheimer):
         nac = self.get_coupling(crd)
         ene, u = np.linalg.eigh(np.diag(h_mch))
         return ene, u, nac, grad_old
+
+    def elec_density(self, state):
+        c_mch = state.ncoeff
+        if isinstance(c_mch, np.ndarray) != True:
+            c_mch = np.array(c_mch,dtype=np.complex128) 
+        return np.outer(c_mch, c_mch.conj())
 
     def grad_diag(self, g_mch, u):
         g_diag = {}
@@ -149,14 +158,25 @@ class SurfaceHopping(BornOppenheimer):
         state.nac = nac
         state.vk = self.vk_coupl_matrix(state.vel, nac)
         state.ekin = self.cal_ekin(state.mass, state.vel)
+        state.rho = self.elec_density(state)
         return grad_old_diag
-
 
     def mch_propagator(self, h_mch, vk, dt):
         h_total = np.diag(h_mch) - 1j*(vk) 
         ene, u = np.linalg.eigh(h_total)
         p_mch = np.linalg.multi_dot([u, np.diag(np.exp( -1j * ene * dt)), u.T.conj()])
         return p_mch
+
+    def elec_density_new(self, rho, p_mch):
+        """ Computing propagation and new density:
+            D and U are diagonal and unitary matrices of hamiltonian 
+            rho_ij(t) = c_i(t)*c_j(t)^{*}
+            as c(t+dt) = U*exp(-j*D*dt)*U.T*c(t),
+            then rho_ij(t+dt) = c_i(t+dt)*c_j(t+dt)^{*}
+                              = U*exp(-j*D*dt)*U.T*c_i(t)*c_j(t)^{*}*U*exp(j*D*dt)*U.T
+                              = U*exp(-j*D*dt)*U.T*rho_ij(t)*U*exp(j*D*dt)*U.T
+        """
+        return np.linalg.multi_dot([p_mch, rho, p_mch.T.conj()])
 
     def diag_propagator(self, u_new, dt, state):
         c_mch = state.ncoeff
@@ -183,7 +203,19 @@ class SurfaceHopping(BornOppenheimer):
         else:
             prob_ji = prob_factor_1*((prob_factor_2_N/prob_factor_2_D))
         return prob_ji
-    
+   
+    def probabilities_tully(self, state, dt):
+        rho_old = state.rho
+        instate = state.instate
+        ene = state.ene
+        vk = state.vk
+        h_total = np.diag(ene) - 1j*(vk)
+        p_mch = self.mch_propagator(ene, vk, dt)
+        probs = (2.0 * np.imag(rho_old[instate,:] * h_total[:,instate]) * dt)/(np.real(rho_old[instate,instate])) 
+        probs[instate] = 0.0
+        probs = np.maximum(probs, 0.0)
+        return probs, rho_old, p_mch 
+ 
     def probabilities(self, state, c_diag_dt, c_diag, p_diag_dt):
         probs = np.zeros(self.nstates)
         instate = state.instate
@@ -197,8 +229,7 @@ class SurfaceHopping(BornOppenheimer):
         #return nac_new[state_new,state_old]
         #return nac_old[state_new,state_old] 
         return (0.5)*(nac_old[state_new,state_old] + nac_new[state_new,state_old])
-        
-    
+         
     def diff_ji(self, state_old, state_new, ene_new):
         return ene_new[state_old] - ene_new[state_new]
     
@@ -271,13 +302,20 @@ class SurfaceHopping(BornOppenheimer):
         ene_new, u_new, nac_new, grad_new = self.get_ene_nac_grad(crd_new)
         grad_new_diag = self.grad_diag(grad_new, u_new)
         c_diag, c_diag_new, p_diag_new = self.diag_propagator(u_new, dt, state)
-        probs = self.probabilities(state, c_diag_new, c_diag, p_diag_new)
+        if self.prob_name == "diagonal":
+            probs = self.probabilities(state, c_diag_new, c_diag, p_diag_new)
+        elif self.prob_name == "tully":
+            probs, rho_old, p_mch = self.probabilities_tully(state, dt)
         state, aleatory, acc_probs = self.surface_hopping(state, nac_new, probs, ene_new)
         print_var(t, dt, aleatory, acc_probs, state) #printing variables 
         state.ene = ene_new
         state.epot = ene_new[state.instate]
         state.u = u_new
-        state.ncoeff = np.dot(state.u, c_diag_new)
+        if self.prob_name == "diagonal":   
+            state.ncoeff = np.dot(state.u, c_diag_new)
+        elif self.prob_name == "tully":
+            state.rho = self.elec_density_new(rho_old, p_mch)
+            state.ncoeff = np.diag(rho_old.real) 
         state.nac = nac_new
         state.vk = self.vk_coupl_matrix(state.vel, state.nac)
         state.ekin = self.cal_ekin(state.mass, state.vel)
@@ -295,9 +333,10 @@ class State(Colt):
     nstates = 2 :: int
     states = 0 1 :: ilist
     ncoeff = 0.0 1.0 :: flist
+    prob = tully :: str 
     """
     
-    def __init__(self, crd, vel, mass, instate, nstates, states, ncoeff):
+    def __init__(self, crd, vel, mass, instate, nstates, states, ncoeff, prob):
         self.crd = crd
         self.vel = vel
         self.mass = mass
@@ -305,12 +344,14 @@ class State(Colt):
         self.nstates = nstates
         self.states = states
         self.ncoeff = ncoeff
+        self.prob = prob
         self.ekin = 0
         self.epot = 0
         self.nac = {}
         self.ene = []
         self.vk = []
         self.u = []
+        self.rho = []
 
     @classmethod
     def from_config(cls, config):
@@ -321,11 +362,12 @@ class State(Colt):
         nstates = config['nstates']
         states = config['states']
         ncoeff = config['ncoeff']
-        return cls(crd, vel, mass, instate, nstates, states, ncoeff) 
+        prob = config['prob']
+        return cls(crd, vel, mass, instate, nstates, states, ncoeff, prob) 
 
     @classmethod
-    def from_initial(cls, crd, vel, mass, instate, nstates, states, ncoeff):
-        return cls(crd, vel, mass, instate, nstates, states, ncoeff)
+    def from_initial(cls, crd, vel, mass, instate, nstates, states, ncoeff, prob):
+        return cls(crd, vel, mass, instate, nstates, states, ncoeff, prob)
 
 def print_head():
     dash = '-' * 141
@@ -338,15 +380,15 @@ def print_head():
 
 def print_var(t, dt, r, acc_probs, State):
     Var = (int(t/dt)+1,t,State.crd,State.vel,State.ekin,State.epot,State.ekin + State.epot,acc_probs,r,State.instate)
-    print(f"{Var[0]:>8.0f} {Var[1]:>12.2f} {Var[2]:>14.2f}"\
-                f"{Var[3]:>14.2f} {Var[4]:>15.3f} {Var[5]:>17.3f} {Var[6]:>13.3f} {Var[7]:>15.5f} {Var[8]:>11.5f} {Var[9]:>11.0f}")
+    print(f"{Var[0]:>8.0f} {Var[1]:>12.1f} {Var[2]:>14.4f}"\
+                f"{Var[3]:>14.4f} {Var[4]:>15.3f} {Var[5]:>17.4f} {Var[6]:>13.4f} {Var[7]:>15.5f} {Var[8]:>11.5f} {Var[9]:>11.0f}")
 
 def print_bottom():
     dash = '-' * 141
     print(dash)
 
 if __name__=="__main__":
-    elec_state = State.from_questions(config = "model_tully_1.ini")
+    elec_state = State.from_questions(config = "state_setting.ini")
     DY = VelocityVerletPropagator(0, elec_state)    
     try:
         result_2 = DY.run()
