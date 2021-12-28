@@ -303,31 +303,44 @@ class SurfaceHopping(BornOppenheimer):
         sur_hop = namedtuple("sur_hop", "aleatory acc_probs")
         return sur_hop(aleatory, acc_probs[state.instate])
 
-    def new_surface(self, state, crd_new, t, dt):
-        ene_nac_grad = self.get_ene_nac_grad(crd_new)
-        grad_new_diag = self.grad_diag(ene_nac_grad)
-        diag_prop = self.diag_propagator(ene_nac_grad, dt, state)
+    def new_prob_grad(self, state, ene_nac_grad, dt):
         if self.prob_name == "diagonal":
+            grad_new = self.grad_diag(ene_nac_grad)
+            diag_prop = self.diag_propagator(ene_nac_grad, dt, state)
             probs = self.probabilities_diagonal(state, diag_prop)
+            result = namedtuple("result","probs grad_new diag_prop") 
+            return result(probs, grad_new, diag_prop)
         elif self.prob_name == "tully":
             tully= self.probabilities_tully(state, dt)
             probs = tully.probs
+            grad_new = ene_nac_grad.grad 
+            result = namedtuple("result","probs grad_new, tully") 
+            return result(probs, grad_new, tully)
         else:
             raise SystemExit("A right probability method is not defined")
-        sur_hop = self.surface_hopping(state, ene_nac_grad, probs)
+
+    def new_ncoeff(self, state, grad_probs):
+        if self.prob_name == "diagonal":   
+            state.ncoeff = np.dot(state.u, grad_probs.diag_prop.c_diag_new)
+        elif self.prob_name == "tully":
+            state.rho = self.elec_density_new(grad_probs.tully.rho_old, grad_probs.tully.p_mch)
+            state.ncoeff = np.diag(grad_probs.tully.rho_old.real) 
+        else:
+            raise SystemExit("A right probability method is not defined") 
+
+    def new_surface(self, state, crd_new, t, dt):
+        ene_nac_grad = self.get_ene_nac_grad(crd_new)
+        grad_probs = self.new_prob_grad(state, ene_nac_grad, dt)
+        sur_hop = self.surface_hopping(state, ene_nac_grad, grad_probs.probs)
         print_var(t, dt, sur_hop, state) #printing variables 
         state.ene = ene_nac_grad.ene
         state.epot = state.ene[state.instate]
         state.u = ene_nac_grad.u
-        if self.prob_name == "diagonal":   
-            state.ncoeff = np.dot(state.u, diag_prop.c_diag_new)
-        elif self.prob_name == "tully":
-            state.rho = self.elec_density_new(tully.rho_old, tully.p_mch)
-            state.ncoeff = np.diag(tully.rho_old.real) 
+        self.new_ncoeff(state, grad_probs)
         state.nac = ene_nac_grad.nac
         state.vk = self.vk_coupl_matrix(state.vel, state.nac)
         state.ekin = self.cal_ekin(state.mass, state.vel)
-        return grad_new_diag
+        return grad_probs.grad_new
 
 class State(Colt):
 
