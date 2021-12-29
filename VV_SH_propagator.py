@@ -11,35 +11,37 @@ from colt import Colt
 
 class VelocityVerletPropagator:
 
-    def __init__(self, t, State):
+    def __init__(self, t, state):
         self.t = t
-        self.state = State
+        self.state = state
         self.dt = np.abs(0.05/self.state.vel)
         self.t_max = 2.0*np.abs(self.state.crd/self.state.vel)
         self.electronic = SurfaceHopping(self.state)
+        self.results = PrintResults()
 
     def run(self):
         
         if self.t > self.t_max:
             raise SystemExit("Noting to be done")
         
-        state = self.state        
+        state = self.state       
+        results = self.results 
         grad_old = self.electronic.setup(state)
         acce_old = self.accelerations(state, grad_old)
 
-        print_head()
+        results.print_head()
         while(self.t <= self.t_max):
             """updating coordinates"""
             crd_new = self.positions(state, acce_old, self.dt)
             """updating accelerations"""    
-            grad_new = self.electronic.new_surface(state, crd_new, self.t, self.dt)
+            grad_new = self.electronic.new_surface(state, results, crd_new, self.t, self.dt)
             acce_new = self.accelerations(state, grad_new)
             """updating velocities"""
             vel_new = self.velocities(state, acce_old, acce_new, self.dt)
             """updating variables"""
             acce_old = self.update_state(state, acce_new, crd_new, vel_new) 
             self.t += self.dt 
-        return print_bottom()
+        results.print_bottom()
 
     def accelerations(self, state, grad):
         return -grad[state.instate]/state.mass
@@ -328,11 +330,11 @@ class SurfaceHopping(BornOppenheimer):
         else:
             raise SystemExit("A right probability method is not defined") 
 
-    def new_surface(self, state, crd_new, t, dt):
+    def new_surface(self, state, results, crd_new, t, dt):
         ene_nac_grad = self.get_ene_nac_grad(crd_new)
         grad_probs = self.new_prob_grad(state, ene_nac_grad, dt)
         sur_hop = self.surface_hopping(state, ene_nac_grad, grad_probs.probs)
-        print_var(t, dt, sur_hop, state) #printing variables 
+        results.print_var(t, dt, sur_hop, state) #printing variables 
         state.ene = ene_nac_grad.ene
         state.epot = state.ene[state.instate]
         state.u = ene_nac_grad.u
@@ -393,23 +395,32 @@ class State(Colt):
     def from_initial(cls, crd, vel, mass, instate, nstates, states, ncoeff, prob):
         return cls(crd, vel, mass, instate, nstates, states, ncoeff, prob)
 
-def print_head():
-    dash = '-' * 141
-    print(dash)
-    Header = ["MD_steps", "Time", "Position", "Velocity", "E_kinetic",\
-                 "E_potential", "E_total", "Hopping_P", "Random", "State"]
-    print(f"{Header[0]:>10s} {Header[1]:>10s} {Header[2]:>14s} {Header[3]:>14s}"\
-                f"{Header[4]:>15s} {Header[5]:>17s} {Header[6]:>13s} {Header[7]:>15s} {Header[8]:>11s}  {Header[9]:>11s}")
-    print(dash)
+class PrintResults:
+ 
+    def __init__(self):
+        self.dash = '-' * 141
+        self.all_variables = open("all_variables.out", "w")
+        self.t_vs_crd = open("t_vs_crd.out", "w")
 
-def print_var(t, dt,sur_hop, state):
-    Var = (int(t/dt)+1,t,state.crd,state.vel,state.ekin,state.epot,state.ekin + state.epot,sur_hop.acc_probs,sur_hop.aleatory,state.instate)
-    print(f"{Var[0]:>8.0f} {Var[1]:>12.1f} {Var[2]:>14.4f}"\
-                f"{Var[3]:>14.4f} {Var[4]:>15.3f} {Var[5]:>17.4f} {Var[6]:>13.4f} {Var[7]:>15.5f} {Var[8]:>11.5f} {Var[9]:>11.0f}")
+    def print_head(self):
+        self.all_variables.write(self.dash + "\n")
+        Header = ["MD_steps", "Time", "Position", "Velocity", "E_kinetic",\
+                     "E_potential", "E_total", "Hopping_P", "Random", "State"]
+        self.all_variables.write(f"{Header[0]:>10s} {Header[1]:>10s} {Header[2]:>14s} {Header[3]:>14s}"\
+                    f"{Header[4]:>15s} {Header[5]:>17s} {Header[6]:>13s} {Header[7]:>15s} {Header[8]:>11s}  {Header[9]:>11s} \n")
+        self.all_variables.write(self.dash + "\n")
+        self.t_vs_crd.write(f"#{Header[1]:>10s} {Header[2]:>12s} \n")
 
-def print_bottom():
-    dash = '-' * 141
-    print(dash)
+    def print_var(self, t, dt, sur_hop, state):
+        Var = (int(t/dt)+1,t,state.crd,state.vel,state.ekin,state.epot,state.ekin + state.epot,sur_hop.acc_probs,sur_hop.aleatory,state.instate)
+        self.all_variables.write(f"{Var[0]:>8.0f} {Var[1]:>12.1f} {Var[2]:>14.4f}"\
+                    f"{Var[3]:>14.4f} {Var[4]:>15.3f} {Var[5]:>17.4f} {Var[6]:>13.4f} {Var[7]:>15.5f} {Var[8]:>11.5f} {Var[9]:>11.0f} \n")
+        self.t_vs_crd.write(f"{Var[1]:>11.1f} {Var[2]:>12.4f} \n")
+    
+    def print_bottom(self):
+        self.all_variables.write(self.dash)
+        self.all_variables.close()
+        self.t_vs_crd.close()
 
 if __name__=="__main__":
     elec_state = State.from_questions(config = "state_setting.ini")
