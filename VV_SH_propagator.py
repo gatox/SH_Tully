@@ -401,7 +401,7 @@ class PrintResults:
     def __init__(self):
         self.dash = '-' * 141
         self.gen_results = open("gen_results.out", "w")
-        self.t_crd_vel_ene_popu = open("t_crd_vel_ene_popu.out", "w")
+        self.t_crd_vel_ene_popu = open("t_crd_vel_ene_popu.csv", "w")
 
     def print_head(self):
         self.gen_results.write(self.dash + "\n")
@@ -411,8 +411,10 @@ class PrintResults:
         self.gen_results.write(f"{head.steps:>10s} {head.t:>10s} {head.crd:>14s} {head.vel:>14s}"\
                 f"{head.ekin:>15s} {head.epot:>17s} {head.etotal:>13s} {head.hopp:>15s} {head.r:>11s} {head.state:>11s} \n")
         self.gen_results.write(self.dash + "\n")
-        self.t_crd_vel_ene_popu.write(f"#{head.t:>10s} {head.crd:>12s} {head.vel:>12s} {head.ene0:>12s}"\
-                                        f" {head.ene1:>12s} {head.pop0:>12s} {head.pop1:>12s} {head.state:>11s}\n")
+        #self.t_crd_vel_ene_popu.write(f"{head.t:>10s}, {head.crd:>12s}, {head.vel:>12s}, {head.ene0:>12s},"\
+        #                                f" {head.ene1:>12s}, {head.pop0:>12s}, {head.pop1:>12s}, {head.state:>11s}\n")
+        self.t_crd_vel_ene_popu.write(f"{head.t},{head.crd},{head.vel},{head.ene0},"\
+                                        f"{head.ene1},{head.pop0},{head.pop1},{head.state}\n")
 
     def print_var(self, t, dt, sur_hop, state):
         var = namedtuple("var","steps t crd vel ekin epot etotal hopp r state ene0 ene1 pop0 pop1")
@@ -425,7 +427,8 @@ class PrintResults:
             raise SystemExit("A right probability method is not defined")
         self.gen_results.write(f"{var.steps:>8.0f} {var.t:>12.1f} {var.crd:>14.4f}"\
                     f"{var.vel:>14.4f} {var.ekin:>15.3f} {var.epot:>17.4f} {var.etotal:>13.4f} {var.hopp:>15.5f} {var.r:>11.5f} {var.state:>11.0f} \n")
-        self.t_crd_vel_ene_popu.write(f"{var.t:>11.1f} {var.crd:>12.4f} {var.vel:>12.4f} {var.ene0:>12.4f} {var.ene1:>12.4f} {var.pop0:>12.4f} {var.pop1:>12.4f} {var.state:>11.0f}\n")
+        #self.t_crd_vel_ene_popu.write(f"{var.t:>11.1f}, {var.crd:>12.4f}, {var.vel:>12.4f}, {var.ene0:>12.4f}, {var.ene1:>12.4f}, {var.pop0:>12.4f}, {var.pop1:>12.4f}, {var.state:>11.0f}\n")
+        self.t_crd_vel_ene_popu.write(f"{var.t:>0.3f},{var.crd:>0.8f},{var.vel:>0.8f},{var.ene0:>0.8f},{var.ene1:>0.8f},{var.pop0:>0.8f},{var.pop1:>0.8f},{var.state:>0.0f}\n")
     
     def print_bottom(self):
         self.gen_results.write(self.dash)
