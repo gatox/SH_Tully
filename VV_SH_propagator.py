@@ -324,6 +324,7 @@ class SurfaceHopping(BornOppenheimer):
     def new_ncoeff(self, state, grad_probs):
         if self.prob_name == "diagonal":   
             state.ncoeff = np.dot(state.u, grad_probs.diag_prop.c_diag_new)
+            state.rho = self.elec_density(state)
         elif self.prob_name == "tully":
             state.rho = self.elec_density_new(grad_probs.tully.rho_old, grad_probs.tully.p_mch)
             state.ncoeff = np.diag(grad_probs.tully.rho_old.real) 
@@ -399,28 +400,37 @@ class PrintResults:
  
     def __init__(self):
         self.dash = '-' * 141
-        self.all_variables = open("all_variables.out", "w")
-        self.t_vs_crd = open("t_vs_crd.out", "w")
+        self.gen_results = open("gen_results.out", "w")
+        self.t_crd_vel_ene_popu = open("t_crd_vel_ene_popu.out", "w")
 
     def print_head(self):
-        self.all_variables.write(self.dash + "\n")
-        Header = ["MD_steps", "Time", "Position", "Velocity", "E_kinetic",\
-                     "E_potential", "E_total", "Hopping_P", "Random", "State"]
-        self.all_variables.write(f"{Header[0]:>10s} {Header[1]:>10s} {Header[2]:>14s} {Header[3]:>14s}"\
-                    f"{Header[4]:>15s} {Header[5]:>17s} {Header[6]:>13s} {Header[7]:>15s} {Header[8]:>11s}  {Header[9]:>11s} \n")
-        self.all_variables.write(self.dash + "\n")
-        self.t_vs_crd.write(f"#{Header[1]:>10s} {Header[2]:>12s} \n")
+        self.gen_results.write(self.dash + "\n")
+        head = namedtuple("head","steps t crd vel ekin epot etotal hopp r state ene0 ene1 pop0 pop1")
+        head = head("MD_steps", "Time", "Position", "Velocity", "E_kinetic",\
+                     "E_potential", "E_total", "Hopping_P", "Random", "State", "Ene_0", "Ene_1", "Pop_0", "Pop_1")
+        self.gen_results.write(f"{head.steps:>10s} {head.t:>10s} {head.crd:>14s} {head.vel:>14s}"\
+                f"{head.ekin:>15s} {head.epot:>17s} {head.etotal:>13s} {head.hopp:>15s} {head.r:>11s} {head.state:>11s} \n")
+        self.gen_results.write(self.dash + "\n")
+        self.t_crd_vel_ene_popu.write(f"#{head.t:>10s} {head.crd:>12s} {head.vel:>12s} {head.ene0:>12s}"\
+                                        f" {head.ene1:>12s} {head.pop0:>12s} {head.pop1:>12s} {head.state:>11s}\n")
 
     def print_var(self, t, dt, sur_hop, state):
-        Var = (int(t/dt)+1,t,state.crd,state.vel,state.ekin,state.epot,state.ekin + state.epot,sur_hop.acc_probs,sur_hop.aleatory,state.instate)
-        self.all_variables.write(f"{Var[0]:>8.0f} {Var[1]:>12.1f} {Var[2]:>14.4f}"\
-                    f"{Var[3]:>14.4f} {Var[4]:>15.3f} {Var[5]:>17.4f} {Var[6]:>13.4f} {Var[7]:>15.5f} {Var[8]:>11.5f} {Var[9]:>11.0f} \n")
-        self.t_vs_crd.write(f"{Var[1]:>11.1f} {Var[2]:>12.4f} \n")
+        var = namedtuple("var","steps t crd vel ekin epot etotal hopp r state ene0 ene1 pop0 pop1")
+        if state.prob == "diagonal":    
+            pop = np.diag(state.rho).real
+            var = var(int(t/dt)+1,t,state.crd,state.vel,state.ekin,state.epot,state.ekin + state.epot,sur_hop.acc_probs,sur_hop.aleatory,state.instate, state.ene[0], state.ene[1], pop[0], pop[1])
+        elif state.prob == "tully":  
+            var = var(int(t/dt)+1,t,state.crd,state.vel,state.ekin,state.epot,state.ekin + state.epot,sur_hop.acc_probs,sur_hop.aleatory,state.instate, state.ene[0], state.ene[1], state.ncoeff[0], state.ncoeff[1])
+        else:
+            raise SystemExit("A right probability method is not defined")
+        self.gen_results.write(f"{var.steps:>8.0f} {var.t:>12.1f} {var.crd:>14.4f}"\
+                    f"{var.vel:>14.4f} {var.ekin:>15.3f} {var.epot:>17.4f} {var.etotal:>13.4f} {var.hopp:>15.5f} {var.r:>11.5f} {var.state:>11.0f} \n")
+        self.t_crd_vel_ene_popu.write(f"{var.t:>11.1f} {var.crd:>12.4f} {var.vel:>12.4f} {var.ene0:>12.4f} {var.ene1:>12.4f} {var.pop0:>12.4f} {var.pop1:>12.4f} {var.state:>11.0f}\n")
     
     def print_bottom(self):
-        self.all_variables.write(self.dash)
-        self.all_variables.close()
-        self.t_vs_crd.close()
+        self.gen_results.write(self.dash)
+        self.gen_results.close()
+        self.t_crd_vel_ene_popu.close()
 
 if __name__=="__main__":
     elec_state = State.from_questions(config = "state_setting.ini")
