@@ -412,7 +412,7 @@ class PrintResults:
         crd = state.crd
         prob = state.prob
         instate = state.instate
-        self.ini = instate
+        self.instate = instate
         nstates = state.nstates
         ncoeff = state.ncoeff
         ack = namedtuple("ack", "title vel crd based actors prob instate nstates ncoeff")
@@ -459,10 +459,10 @@ class PrintResults:
                     f" {var.hopp:>15.5f} {var.r:>11.5f} {var.state:>11.0f} \n")
         self.t_crd_vel_ene_popu.write(f"{var.t:>0.3f},{var.crd:>0.8f},{var.vel:>0.8f},"\
                     f"{var.ene0:>0.8f},{var.ene1:>0.8f},{var.pop0:>0.8f},{var.pop1:>0.8f},{var.state:>0.0f}\n")
-        if var.state != self.ini:
-            self.hopping.append(f"Trajectory hopping from {self.ini} to {state.instate}"\
+        if var.state != self.instate:
+            self.hopping.append(f"Trajectory hopping from {self.instate} to {state.instate}"\
                                 f" in step: {var.steps}, at the time step: {var.t}")
-            self.ini = var.state
+            self.instate = var.state
  
     def print_bottom(self, state):
         self.gen_results.write(self.dash + "\n")
