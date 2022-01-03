@@ -29,7 +29,7 @@ class VelocityVerletPropagator:
         grad_old = self.electronic.setup(state)
         acce_old = self.accelerations(state, grad_old)
 
-        results.print_head()
+        results.print_head(state)
         while(self.t <= self.t_max):
             """updating coordinates"""
             crd_new = self.positions(state, acce_old, self.dt)
@@ -41,7 +41,7 @@ class VelocityVerletPropagator:
             """updating variables"""
             acce_old = self.update_state(state, acce_new, crd_new, vel_new) 
             self.t += self.dt 
-        results.print_bottom()
+        results.print_bottom(state)
 
     def accelerations(self, state, grad):
         return -grad[state.instate]/state.mass
@@ -402,36 +402,76 @@ class PrintResults:
         self.dash = '-' * 141
         self.gen_results = open("gen_results.out", "w")
         self.t_crd_vel_ene_popu = open("t_crd_vel_ene_popu.csv", "w")
+        self.hopping = []
 
-    def print_head(self):
-        self.gen_results.write(self.dash + "\n")
+    def print_acknowledgment(self, state):
+        title = " Trajectory Surface Hopping Module "
+        based = " This module uses the tools implemented in PySurf"
+        contributors = " Module implemented by: Edison, Max and Shirin "
+        vel = state.vel
+        crd = state.crd
+        prob = state.prob
+        instate = state.instate
+        self.ini = instate
+        nstates = state.nstates
+        ncoeff = state.ncoeff
+        ack = namedtuple("ack", "title vel crd based actors prob instate nstates ncoeff")
+        return ack(title, vel, crd, based, contributors, prob, instate, nstates, ncoeff)
+
+    def print_head(self, state):
+        ack = self.print_acknowledgment(state)  
         head = namedtuple("head","steps t crd vel ekin epot etotal hopp r state ene0 ene1 pop0 pop1")
         head = head("MD_steps", "Time", "Position", "Velocity", "E_kinetic",\
                      "E_potential", "E_total", "Hopping_P", "Random", "State", "Ene_0", "Ene_1", "Pop_0", "Pop_1")
+        self.gen_results.write(f"\n{ack.title:=^141}\n")
+        self.gen_results.write(f"\n{ack.based:^141}\n")
+        self.gen_results.write(f"{ack.actors:^141}\n")        
+        self.gen_results.write(f"Initial parameters:\n")
+        self.gen_results.write(f"   Initial position: {ack.crd}\n")
+        self.gen_results.write(f"   Initial velocity: {ack.vel}\n")
+        self.gen_results.write(f"   Number of states: {ack.nstates}\n")
+        self.gen_results.write(f"   Initial population: {ack.ncoeff}\n")
+        self.gen_results.write(f"   Initial state: {ack.instate}\n")
+        self.gen_results.write(f"   Probability method: {ack.prob}\n")
+        self.gen_results.write(f"Computing a trajectory surface hopping simulation:\n")
+        self.gen_results.write(self.dash + "\n")
         self.gen_results.write(f"{head.steps:>10s} {head.t:>10s} {head.crd:>14s} {head.vel:>14s}"\
                 f"{head.ekin:>15s} {head.epot:>17s} {head.etotal:>13s} {head.hopp:>15s} {head.r:>11s} {head.state:>11s} \n")
         self.gen_results.write(self.dash + "\n")
-        #self.t_crd_vel_ene_popu.write(f"{head.t:>10s}, {head.crd:>12s}, {head.vel:>12s}, {head.ene0:>12s},"\
-        #                                f" {head.ene1:>12s}, {head.pop0:>12s}, {head.pop1:>12s}, {head.state:>11s}\n")
         self.t_crd_vel_ene_popu.write(f"{head.t},{head.crd},{head.vel},{head.ene0},"\
                                         f"{head.ene1},{head.pop0},{head.pop1},{head.state}\n")
 
-    def print_var(self, t, dt, sur_hop, state):
+    def print_var(self, t, dt, sur_hop, state):        
         var = namedtuple("var","steps t crd vel ekin epot etotal hopp r state ene0 ene1 pop0 pop1")
         if state.prob == "diagonal":    
             pop = np.diag(state.rho).real
-            var = var(int(t/dt)+1,t,state.crd,state.vel,state.ekin,state.epot,state.ekin + state.epot,sur_hop.acc_probs,sur_hop.aleatory,state.instate, state.ene[0], state.ene[1], pop[0], pop[1])
+            var = var(int(t/dt)+1,t,state.crd,state.vel,state.ekin,state.epot,\
+                    state.ekin + state.epot,sur_hop.acc_probs,sur_hop.aleatory,\
+                    state.instate, state.ene[0], state.ene[1], pop[0], pop[1])
         elif state.prob == "tully":  
-            var = var(int(t/dt)+1,t,state.crd,state.vel,state.ekin,state.epot,state.ekin + state.epot,sur_hop.acc_probs,sur_hop.aleatory,state.instate, state.ene[0], state.ene[1], state.ncoeff[0], state.ncoeff[1])
+            var = var(int(t/dt)+1,t,state.crd,state.vel,state.ekin,state.epot,\
+                    state.ekin + state.epot,sur_hop.acc_probs,sur_hop.aleatory,\
+                    state.instate, state.ene[0], state.ene[1], state.ncoeff[0], state.ncoeff[1])
         else:
             raise SystemExit("A right probability method is not defined")
         self.gen_results.write(f"{var.steps:>8.0f} {var.t:>12.1f} {var.crd:>14.4f}"\
-                    f"{var.vel:>14.4f} {var.ekin:>15.3f} {var.epot:>17.4f} {var.etotal:>13.4f} {var.hopp:>15.5f} {var.r:>11.5f} {var.state:>11.0f} \n")
-        #self.t_crd_vel_ene_popu.write(f"{var.t:>11.1f}, {var.crd:>12.4f}, {var.vel:>12.4f}, {var.ene0:>12.4f}, {var.ene1:>12.4f}, {var.pop0:>12.4f}, {var.pop1:>12.4f}, {var.state:>11.0f}\n")
-        self.t_crd_vel_ene_popu.write(f"{var.t:>0.3f},{var.crd:>0.8f},{var.vel:>0.8f},{var.ene0:>0.8f},{var.ene1:>0.8f},{var.pop0:>0.8f},{var.pop1:>0.8f},{var.state:>0.0f}\n")
-    
-    def print_bottom(self):
-        self.gen_results.write(self.dash)
+                    f"{var.vel:>14.4f} {var.ekin:>15.3f} {var.epot:>17.4f} {var.etotal:>13.4f}"\
+                    f" {var.hopp:>15.5f} {var.r:>11.5f} {var.state:>11.0f} \n")
+        self.t_crd_vel_ene_popu.write(f"{var.t:>0.3f},{var.crd:>0.8f},{var.vel:>0.8f},"\
+                    f"{var.ene0:>0.8f},{var.ene1:>0.8f},{var.pop0:>0.8f},{var.pop1:>0.8f},{var.state:>0.0f}\n")
+        if var.state != self.ini:
+            self.hopping.append(f"Trajectory hopping from {self.ini} to {state.instate}"\
+                                f" in step: {var.steps}, at the time step: {var.t}")
+            self.ini = var.state
+ 
+    def print_bottom(self, state):
+        self.gen_results.write(self.dash + "\n")
+        if self.hopping:
+            for i in range(len(self.hopping)):
+                self.gen_results.write(f"{self.hopping[i]}\n")
+        else:
+            self.gen_results.write(f"No trajectory hoppings achieved\n")
+        self.gen_results.write(f"Some important variables are printed in an external file caled: t_crd_vel_ene_popu.csv\n")
         self.gen_results.close()
         self.t_crd_vel_ene_popu.close()
 
