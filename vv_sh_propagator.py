@@ -14,11 +14,12 @@ from colt import Colt
 
 class VelocityVerletPropagator:
 
-    def __init__(self, t, state):
-        self.t = t
+    def __init__(self, state):
         self.state = state
-        self.dt = np.abs(0.05/self.state.vel)
-        self.t_max = 2.0*np.abs(self.state.crd/self.state.vel)
+        self.t = self.state.t
+        self.dt = self.state.dt
+        self.t_max = self.dt*self.state.mdsteps 
+        #self.t_max = 2.0*np.abs(self.state.crd/self.state.vel)
         self.electronic = SurfaceHopping(self.state)
         self.results = PrintResults()
 
@@ -44,7 +45,8 @@ class VelocityVerletPropagator:
             """updating variables"""
             acce_old = self.update_state(state, acce_new, crd_new, vel_new) 
             self.t += self.dt 
-        results.print_bottom(state)
+        results.print_bottom()
+        
 
     def accelerations(self, state, grad):
         return -grad[state.instate]/state.mass
@@ -352,9 +354,12 @@ class State(Colt):
 
     _questions = """ 
     # chosen parameters
-    crd = -4.0 :: float
-    vel = 1.0 :: float
-    mass = 1.0 :: float
+    crd = -10.0 :: float
+    vel = 0.004 :: float
+    mass = 2000.0 :: float
+    t = 0.0 :: float
+    dt = 1.0 :: float
+    mdsteps = 40000 :: float
     # instate is the initial state: 0 = G.S, 1 = E_1, ...
     instate = 1 :: int
     nstates = 2 :: int
@@ -363,10 +368,13 @@ class State(Colt):
     prob = tully :: str 
     """
     
-    def __init__(self, crd, vel, mass, instate, nstates, states, ncoeff, prob):
+    def __init__(self, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob):
         self.crd = crd
         self.vel = vel
         self.mass = mass
+        self.t = t
+        self.dt = dt
+        self.mdsteps = mdsteps
         self.instate = instate
         self.nstates = nstates
         self.states = states
@@ -383,21 +391,25 @@ class State(Colt):
             self.natoms = 1
         elif isinstance(self.mass, np.ndarray) != True:
             self.natoms = np.array([self.mass])
+
     @classmethod
     def from_config(cls, config):
         crd = config['crd']
         vel = config['vel']
         mass = config['mass']
+        t = config['t']
+        dt = config['dt']
+        mdsteps = config['mdsteps']
         instate = config['instate']
         nstates = config['nstates']
         states = config['states']
         ncoeff = config['ncoeff']
         prob = config['prob']
-        return cls(crd, vel, mass, instate, nstates, states, ncoeff, prob) 
+        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob) 
 
     @classmethod
-    def from_initial(cls, crd, vel, mass, instate, nstates, states, ncoeff, prob):
-        return cls(crd, vel, mass, instate, nstates, states, ncoeff, prob)
+    def from_initial(cls, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob):
+        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob)
 
 class PrintResults:
  
@@ -414,12 +426,14 @@ class PrintResults:
         vel = state.vel
         crd = state.crd
         prob = state.prob
+        dt = state.dt
+        mdsteps = state.mdsteps
         instate = state.instate
         self.instate = instate
         nstates = state.nstates
         ncoeff = state.ncoeff
-        ack = namedtuple("ack", "title vel crd based actors prob instate nstates ncoeff")
-        return ack(title, vel, crd, based, contributors, prob, instate, nstates, ncoeff)
+        ack = namedtuple("ack", "title vel crd based actors prob dt mdsteps instate nstates ncoeff")
+        return ack(title, vel, crd, based, contributors, prob, dt, mdsteps, instate, nstates, ncoeff)
 
     def print_head(self, state):
         ack = self.print_acknowledgment(state)  
@@ -432,6 +446,8 @@ class PrintResults:
         self.gen_results.write(f"Initial parameters:\n")
         self.gen_results.write(f"   Initial position: {ack.crd}\n")
         self.gen_results.write(f"   Initial velocity: {ack.vel}\n")
+        self.gen_results.write(f"   Time step: {ack.dt}\n")
+        self.gen_results.write(f"   MD steps: {ack.mdsteps}\n")
         self.gen_results.write(f"   Number of states: {ack.nstates}\n")
         self.gen_results.write(f"   Initial population: {ack.ncoeff}\n")
         self.gen_results.write(f"   Initial state: {ack.instate}\n")
@@ -448,26 +464,26 @@ class PrintResults:
         var = namedtuple("var","steps t crd vel ekin epot etotal hopp r state ene0 ene1 pop0 pop1")
         if state.prob == "diagonal":    
             pop = np.diag(state.rho).real
-            var = var(int(t/dt)+1,t,state.crd,state.vel,state.ekin,state.epot,\
+            var = var(int(t/dt),t,state.crd,state.vel,state.ekin,state.epot,\
                     state.ekin + state.epot,sur_hop.acc_probs,sur_hop.aleatory,\
                     state.instate, state.ene[0], state.ene[1], pop[0], pop[1])
         elif state.prob == "tully":  
-            var = var(int(t/dt)+1,t,state.crd,state.vel,state.ekin,state.epot,\
+            var = var(int(t/dt),t,state.crd,state.vel,state.ekin,state.epot,\
                     state.ekin + state.epot,sur_hop.acc_probs,sur_hop.aleatory,\
                     state.instate, state.ene[0], state.ene[1], state.ncoeff[0], state.ncoeff[1])
         else:
             raise SystemExit("A right probability method is not defined")
-        self.gen_results.write(f"{var.steps:>8.0f} {var.t:>12.1f} {var.crd:>14.4f}"\
+        self.gen_results.write(f"{var.steps:>8.0f} {var.t:>12.2f} {var.crd:>14.4f}"\
                     f"{var.vel:>14.4f} {var.ekin:>15.3f} {var.epot:>17.4f} {var.etotal:>13.4f}"\
                     f" {var.hopp:>15.5f} {var.r:>11.5f} {var.state:>11.0f} \n")
         self.t_crd_vel_ene_popu.write(f"{var.t:>0.3f},{var.crd:>0.8f},{var.vel:>0.8f},"\
                     f"{var.ene0:>0.8f},{var.ene1:>0.8f},{var.pop0:>0.8f},{var.pop1:>0.8f},{var.state:>0.0f}\n")
         if var.state != self.instate:
             self.hopping.append(f"Hopping from state {self.instate} to state {state.instate}"\
-                                f" in step: {var.steps}, at the time step: {var.t}")
+                                f" in step: {var.steps}, in position: {var.crd:>0.4f}, at the time step: {var.t}")
             self.instate = var.state
  
-    def print_bottom(self, state):
+    def print_bottom(self):
         self.gen_results.write(self.dash + "\n")
         if self.hopping:
             for i in range(len(self.hopping)):
@@ -535,7 +551,7 @@ class PlotResults:
 
 if __name__=="__main__":
     elec_state = State.from_questions(config = "state_setting.ini")
-    DY = VelocityVerletPropagator(0, elec_state)    
+    DY = VelocityVerletPropagator(elec_state)    
     try:
         result_2 = DY.run()
     except SystemExit as err:
