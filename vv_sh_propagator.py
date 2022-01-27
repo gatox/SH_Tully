@@ -1,8 +1,6 @@
 import numpy as np
 import random
-import matplotlib.pyplot as plt
 
-from pandas import read_csv
 from collections import namedtuple
 from abc import abstractmethod
 from tully_model_1 import Tully_1
@@ -498,57 +496,6 @@ class PrintResults:
         self.gen_results.close()
         self.t_crd_vel_ene_popu.close()
 
-class PlotResults:
-    
-    def __init__(self, output):
-        self.output = read_csv(output)
-        
-    def plot_position(self):
-        plt.plot(self.output.Time,self.output.Position, label = 'X(t)')
-        for i in range(self.output.shape[0]-1):
-            if self.output.State[i] != self.output.State[i+1]:
-                plt.axvline(x=self.output.Time[i+1],label='Hop. at %i'%self.output.Time[i+1],\
-                            linestyle='--', c = 'purple') 
-        plt.xlabel('Time (arb.u.)', fontweight = 'bold', fontsize = 16)
-        plt.ylabel('$\mathbf{X(a0)}$', fontsize = 16)
-        plt.legend()
-        return plt.show()        
-
-    def plot_velocity(self):
-        plt.plot(self.output.Time,self.output.Velocity, label = 'V(t)')
-        for i in range(self.output.shape[0]-1):
-            if self.output.State[i] != self.output.State[i+1]:
-                plt.axvline(x=self.output.Time[i+1],label='Hop. at %i'%self.output.Time[i+1],\
-                            linestyle='--', c = 'purple') 
-        plt.xlabel('Time (arb.u.)', fontweight = 'bold', fontsize = 16)
-        plt.ylabel('$\mathbf{V(a0/arb.u.)}$', fontsize = 16)
-        plt.legend()
-        return plt.show()        
-
-    def plot_energies(self):
-        plt.plot(self.output.Time,self.output.Ene_0, label = '$E_0$')
-        plt.plot(self.output.Time,self.output.Ene_1, label = '$E_1$')
-        for i in range(self.output.shape[0]-1):
-            if self.output.State[i] != self.output.State[i+1]:
-                plt.axvline(x=self.output.Time[i+1],label='Hop. at %i'%self.output.Time[i+1],\
-                            linestyle='--', c = 'purple') 
-        plt.xlabel('Time (arb.u.)', fontweight = 'bold', fontsize = 16)
-        plt.ylabel('$\mathbf{Energy(a.u.)}$', fontsize = 16)
-        plt.legend()
-        return plt.show()        
-
-    def plot_population(self):
-        plt.plot(self.output.Time,self.output.Pop_0, label = '$|C_0(t)|^2$')
-        plt.plot(self.output.Time,self.output.Pop_1, label = '$|C_1(t)|^2$')
-        for i in range(self.output.shape[0]-1):
-            if self.output.State[i] != self.output.State[i+1]:
-                plt.axvline(x=self.output.Time[i+1],label='Hop. at %i'%self.output.Time[i+1],\
-                            linestyle='--', c = 'purple') 
-        plt.xlabel('Time (arb.u.)', fontweight = 'bold', fontsize = 16)
-        plt.ylabel('$\mathbf{Population}$', fontsize = 16)
-        plt.legend()
-        return plt.show()        
-
 if __name__=="__main__":
     elec_state = State.from_questions(config = "state_setting.ini")
     DY = VelocityVerletPropagator(elec_state)    
@@ -556,8 +503,3 @@ if __name__=="__main__":
         result_2 = DY.run()
     except SystemExit as err:
         print("An error:", err) 
-    #output = "t_crd_vel_ene_popu.csv"
-    #picture = PlotResults(output)
-    #picture.plot_energies()
-    #picture.plot_velocity()
-    #picture.plot_population()
