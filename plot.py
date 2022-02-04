@@ -16,8 +16,8 @@ class PlotResults:
         plt.xlabel('Time (arb.u.)', fontweight = 'bold', fontsize = 16)
         plt.ylabel('$\mathbf{X(a0)}$', fontsize = 16)
         plt.legend()
-        plt.savefig("position.pdf")
-        #plt.savefig("position.png", dpi=300)  
+        plt.savefig("position.pdf", bbox_inches='tight')
+        #plt.savefig("position.png", dpi=300, bbox_inches='tight')  
         plt.close()
         #return plt.show()
     
@@ -30,8 +30,8 @@ class PlotResults:
         plt.xlabel('Time (arb.u.)', fontweight = 'bold', fontsize = 16)
         plt.ylabel('$\mathbf{V(a0/arb.u.)}$', fontsize = 16)
         plt.legend()
-        plt.savefig("velocity.pdf")
-        #plt.savefig("velocity.png", dpi=300)  
+        plt.savefig("velocity.pdf", bbox_inches='tight')
+        #plt.savefig("velocity.png", dpi=300, bbox_inches='tight')  
         plt.close()
         #return plt.show()
     
@@ -45,8 +45,8 @@ class PlotResults:
         plt.xlabel('Time (arb.u.)', fontweight = 'bold', fontsize = 16)
         plt.ylabel('$\mathbf{Energy(a.u.)}$', fontsize = 16)
         plt.legend()
-        plt.savefig("energies.pdf")
-        #plt.savefig("energies.png", dpi=300)  
+        plt.savefig("energies.pdf", bbox_inches='tight')
+        #plt.savefig("energies.png", dpi=300, bbox_inches='tight')  
         plt.close()
         #return plt.show()
     
@@ -60,8 +60,8 @@ class PlotResults:
         plt.xlabel('Time (arb.u.)', fontweight = 'bold', fontsize = 16)
         plt.ylabel('$\mathbf{Population}$', fontsize = 16)
         plt.legend()
-        plt.savefig("population.pdf")
-        #plt.savefig("population.png", dpi=300)  
+        plt.savefig("population.pdf", bbox_inches='tight')
+        #plt.savefig("population.png", dpi=300, bbox_inches='tight')  
         plt.close()
         #return plt.show()
     
@@ -70,8 +70,8 @@ class PlotResults:
         plt.xlabel('Momentum (arb.u.)', fontweight = 'bold', fontsize = 16)
         plt.ylabel('Probability', fontweight = 'bold', fontsize = 16)
         plt.legend()
-        plt.savefig("refl.pdf")
-        #plt.savefig("refl.png", dpi=300)  
+        plt.savefig("refl.pdf", bbox_inches='tight')
+        #plt.savefig("refl.png", dpi=300, bbox_inches='tight')  
         plt.close()
         #return plt.show()
     
@@ -80,8 +80,8 @@ class PlotResults:
         plt.xlabel('Momentum (arb.u.)', fontweight = 'bold', fontsize = 16)
         plt.ylabel('Probability', fontweight = 'bold', fontsize = 16)
         plt.legend()
-        plt.savefig("lower.pdf")
-        #plt.savefig("lower.png", dpi=300)  
+        plt.savefig("lower.pdf", bbox_inches='tight')
+        #plt.savefig("lower.png", dpi=300, bbox_inches='tight')  
         plt.close()
         #return plt.show()
     
@@ -90,8 +90,8 @@ class PlotResults:
         plt.xlabel('Momentum (arb.u.)', fontweight = 'bold', fontsize = 16)
         plt.ylabel('Probability', fontweight = 'bold', fontsize = 16)
         plt.legend()
-        plt.savefig("upper.pdf")
-        #plt.savefig("upper.png", dpi=300)  
+        plt.savefig("upper.pdf", bbox_inches='tight')
+        #plt.savefig("upper.png", dpi=300, bbox_inches='tight')  
         plt.close()
         #return plt.show()
 
@@ -102,8 +102,8 @@ class PlotResults:
         plt.xlabel('Momentum (arb.u.)', fontweight = 'bold', fontsize = 16)
         plt.ylabel('Probability', fontweight = 'bold', fontsize = 16)
         plt.legend()
-        plt.savefig("prob_comb.pdf")
-        #plt.savefig("prob_comb.png", dpi=300)  
+        plt.savefig("prob_comb.pdf", bbox_inches='tight')
+        #plt.savefig("prob_comb.png", dpi=300, bbox_inches='tight')  
         plt.close()
         #return plt.show()
     
@@ -112,19 +112,24 @@ class PlotResults:
         plt.xlabel('Momentum (arb.u.)', fontweight = 'bold', fontsize = 16)
         plt.ylabel('Probability', fontweight = 'bold', fontsize = 16)
         plt.legend()
-        plt.savefig("ref_upper.pdf")
-        #plt.savefig("ref_upper.png", dpi=300)  
+        plt.savefig("ref_upper.pdf", bbox_inches='tight')
+        #plt.savefig("ref_upper.png", dpi=300, bbox_inches='tight')  
         plt.close()
         #return plt.show()
 
 if __name__=="__main__":
     output = sys.argv[1]    
+    method = sys.argv[2]    
     if output == "t_crd_vel_ene_popu.csv":
         picture = PlotResults(output)
-        picture.plot_position()
-        picture.plot_velocity()
-        picture.plot_energies()
-        picture.plot_population()
+        if method == "sh":
+            picture.plot_position()
+            picture.plot_velocity()
+            picture.plot_energies()
+            picture.plot_population()
+        elif method == "bo":
+            picture.plot_position()
+            picture.plot_velocity() 
     elif output == "para_traj_results.csv":
         picture = PlotResults(output)
         picture.plot_refl()
