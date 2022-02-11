@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import time
 
 from collections import namedtuple
 from abc import abstractmethod
@@ -8,6 +9,7 @@ from tully_model_2 import Tully_2
 from tully_model_3 import Tully_3
 from tully_model_4 import Tully_4
 from pysurf.spp import ModelBase, SurfacePointProvider
+from pysurf.database import PySurfDB
 from colt import Colt
 
 class VelocityVerletPropagator:
@@ -84,14 +86,6 @@ class BornOppenheimer:
         result = self.spp.request(crd, ['energy'])
         return result['energy']
 
-    def get_ene_nac_grad(self, crd):
-        h_mch = self.get_energy(crd)
-        grad = self.get_gradient(crd)
-        nac = self.get_coupling(crd)
-        ene, u = np.linalg.eigh(np.diag(h_mch))
-        ene_nac_grad = namedtuple("ene_nac_grad", "ene u nac grad")
-        return ene_nac_grad(ene, u, nac, grad)
-
     def cal_ekin(self, mass, vel):
         ekin = 0
         if np.isscalar(mass) and np.isscalar(vel):
@@ -111,6 +105,7 @@ class BornOppenheimer:
     def new_surface(self, state, results, crd_new, t, dt):
         grad_new = self.get_gradient(crd_new)
         results.print_bh_var(t, dt, state) #printing variables 
+        results.save_db(t,state) #save variables in database 
         state.ene = self.get_energy(crd_new)
         state.epot = state.ene[state.instate]
         state.ekin = self.cal_ekin(state.mass, state.vel)
@@ -373,6 +368,7 @@ class SurfaceHopping(BornOppenheimer):
         grad_probs = self.new_prob_grad(state, ene_nac_grad, dt)
         sur_hop = self.surface_hopping(state, ene_nac_grad, grad_probs.probs)
         results.print_var(t, dt, sur_hop, state) #printing variables 
+        results.save_db(t,state) #save variables in database 
         state.ene = ene_nac_grad.ene
         state.epot = state.ene[state.instate]
         state.u = ene_nac_grad.u
@@ -454,6 +450,27 @@ class PrintResults:
         self.gen_results = open("gen_results.out", "w")
         self.t_crd_vel_ene_popu = open("t_crd_vel_ene_popu.csv", "w")
         self.hopping = []
+        self.tra_time = time.time()
+
+    def save_db(self, t, state):
+        nstates = state.nstates
+        if np.isscalar(state.crd):
+            natoms = int(1)
+        else:
+            natoms = len(state.crd)
+        if state.method == "Surface_Hopping":
+            db = PySurfDB.generate_database("results.db", data=["crd","veloc","energy","time","ekin","epot","etot","fosc"], dimensions ={"natoms":natoms, "nstates":nstates})
+            db.set("fosc",state.ncoeff)
+        if state.method == "Born_Oppenheimer":
+            db = PySurfDB.generate_database("results.db", data=["crd","veloc","energy","time","ekin","epot","etot"], dimensions ={"natoms":natoms, "nstates":nstates})
+        db.set("crd",state.crd)
+        db.set("veloc",state.vel)
+        db.set("energy",state.ene)
+        db.set("time",t)
+        db.set("ekin",state.ekin)
+        db.set("epot",state.epot)
+        db.set("etot",state.ekin+state.epot)
+        db.increase  # It increases the frame
 
     def print_acknowledgment(self, state):
         title = " Trajectory Surface Hopping Module "
@@ -563,7 +580,9 @@ class PrintResults:
                 self.gen_results.write(f"No hoppings achieved\n")
         else: 
             self.gen_results.write(self.dash_bo + "\n")
-        self.gen_results.write(f"Some important variables are printed in an external file caled: t_crd_vel_ene_popu.csv\n")
+        self.gen_results.write(f"Some important variables are printed in an external files: t_crd_vel_ene_popu.csv and results.db\n")
+        self.gen_results.write(f"Total job time: {(time.time()-self.tra_time)/60:>0.2f} mins\n")
+        self.gen_results.write(f"{time.ctime()}")
         self.gen_results.close()
         self.t_crd_vel_ene_popu.close()
 
