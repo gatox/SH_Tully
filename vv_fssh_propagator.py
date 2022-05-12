@@ -116,14 +116,20 @@ class BornOppenheimer:
 
 class SurfaceHopping(BornOppenheimer):
 
-    needed_properties = ["energy", "gradient", "nacs"]
+    #needed_properties = ["energy", "gradient", "nacs"]
 
     def __init__(self, state):
         self.nstates = state.nstates
         self.mass = state.mass
         self.natoms = state.natoms
         self.prob_name = state.prob
-        self.spp = SurfacePointProvider.from_questions(["energy","gradient","nacs"], self.nstates, self.natoms, config ="spp.inp", atomids = state.atomids)
+        self.coupling = state.coupling
+        if self.coupling == "nacs":
+            needed_properties = ["energy", "gradient", "nacs"]
+            self.spp = SurfacePointProvider.from_questions(["energy","gradient","nacs"], self.nstates, self.natoms, config ="spp.inp", atomids = state.atomids)
+        elif self.coupling == "wf_overlap":
+            needed_properties = ["energy", "gradient", "wf_overlap"]
+            self.spp = SurfacePointProvider.from_questions(["energy","gradient","wf_overlap"], self.nstates, self.natoms, config ="spp.inp", atomids = state.atomids)
 
     def get_gradient(self, crd):
         result = self.spp.request(crd, ['gradient'])
@@ -134,16 +140,25 @@ class SurfaceHopping(BornOppenheimer):
         return result['energy']
 
     def get_coupling(self, crd):
-        result = self.spp.request(crd, ['nacs'])
-        return result['nacs']
-
-    def get_ene_nac_grad(self, crd):
+        if self.coupling == "nacs":
+            result = self.spp.request(crd, ['nacs'])
+            return result['nacs']
+        elif self.coupling == "wf_overlap":
+            result = self.spp.request(crd, ['wf_overlap'])
+            return result['wf_overlap']
+            
+    def get_ene_cou_grad(self, crd):
         h_mch = self.get_energy(crd)
-        grad = self.get_gradient(crd)
-        nac = self.get_coupling(crd)
+        grad = self.get_gradient(crd) 
         ene, u = np.linalg.eigh(np.diag(h_mch))
-        ene_nac_grad = namedtuple("ene_nac_grad", "ene u nac grad")
-        return ene_nac_grad(ene, u, nac, grad)
+        if self.coupling == "nacs":
+            nac = self.get_coupling(crd)
+            ene_cou_grad = namedtuple("ene_cou_grad", "ene u nac grad")
+            return ene_cou_grad(ene, u, nac, grad)
+        elif self.coupling == "wf_overlap":
+            wf_ov = self.get_coupling(crd)
+            ene_cou_grad = namedtuple("ene_cou_grad", "ene u wf_ov grad")
+            return ene_cou_grad(ene, u, wf_ov, grad)
 
     def elec_density(self, state):
         c_mch = state.ncoeff
@@ -151,15 +166,17 @@ class SurfaceHopping(BornOppenheimer):
             c_mch = np.array(c_mch,dtype=np.complex128) 
         return np.outer(c_mch, c_mch.conj())
 
-    def grad_diag(self, ene_nac_grad):
-        g_mch = ene_nac_grad.grad
-        u = ene_nac_grad.u
+    def grad_diag(self, ene_cou_grad):
+        g_mch = ene_cou_grad.grad
+        u = ene_cou_grad.u
         g_diag = {}
         for i in range(self.nstates):
             g_diag.update({i:np.dot(u.T.conj()[i,:],u[:,i]).real*g_mch[i]})
         return g_diag
 
-    def vk_coupl_matrix(self, vel, nac):
+    def vk_coupl_matrix(self, state):
+        vel = state.vel
+        nac = state.nac
         vk = np.zeros((self.nstates,self.nstates))
         if np.isscalar(vel):
             for i in range(self.nstates):
@@ -185,13 +202,16 @@ class SurfaceHopping(BornOppenheimer):
         return ekin
 
     def setup(self, state):
-        ene_nac_grad = self.get_ene_nac_grad(state.crd)
-        grad_old_diag = self.grad_diag(ene_nac_grad)
-        state.ene = ene_nac_grad.ene
+        ene_cou_grad = self.get_ene_cou_grad(state.crd)
+        grad_old_diag = self.grad_diag(ene_cou_grad)
+        state.ene = ene_cou_grad.ene
         state.epot = state.ene[state.instate]
-        state.u = ene_nac_grad.u
-        state.nac = ene_nac_grad.nac
-        state.vk = self.vk_coupl_matrix(state.vel, state.nac)
+        state.u = ene_cou_grad.u
+        if self.coupling == "nacs":
+            state.nac = ene_cou_grad.nac
+            state.vk = self.vk_coupl_matrix(state)
+        elif self.coupling == "wf_overlap":
+            state.vk = ene_cou_grad.wf_ov 
         state.ekin = self.cal_ekin(state.mass, state.vel)
         state.rho = self.elec_density(state)
         return grad_old_diag
@@ -213,9 +233,9 @@ class SurfaceHopping(BornOppenheimer):
         """
         return np.linalg.multi_dot([p_mch, rho, p_mch.T.conj()])
 
-    def diag_propagator(self, ene_nac_grad, dt, state):
+    def diag_propagator(self, ene_cou_grad, dt, state):
         c_mch = state.ncoeff
-        u_new = ene_nac_grad.u
+        u_new = ene_cou_grad.u
         u = state.u
         ene = state.ene
         vk = state.vk
@@ -319,9 +339,9 @@ class SurfaceHopping(BornOppenheimer):
                 gama_ji = (beta - np.sqrt(beta**2 + 4*alpha*diff))/(2*alpha)
                 self.new_velocity(state, gama_ji, nac_av)
 
-    def surface_hopping(self, state, ene_nac_grad, probs):            
-        nac_new = ene_nac_grad.nac
-        ene_new = ene_nac_grad.ene
+    def surface_hopping(self, state, ene_cou_grad, probs):            
+        nac_new = ene_cou_grad.nac
+        ene_new = ene_cou_grad.ene
         aleatory = random.uniform(0,1)
         acc_probs = np.cumsum(probs)
         hopps = np.less(aleatory, acc_probs)
@@ -340,17 +360,17 @@ class SurfaceHopping(BornOppenheimer):
         sur_hop = namedtuple("sur_hop", "aleatory acc_probs")
         return sur_hop(aleatory, acc_probs[state.instate])
 
-    def new_prob_grad(self, state, ene_nac_grad, dt):
+    def new_prob_grad(self, state, ene_cou_grad, dt):
         if self.prob_name == "diagonal":
-            grad_new = self.grad_diag(ene_nac_grad)
-            diag_prop = self.diag_propagator(ene_nac_grad, dt, state)
+            grad_new = self.grad_diag(ene_cou_grad)
+            diag_prop = self.diag_propagator(ene_cou_grad, dt, state)
             probs = self.probabilities_diagonal(state, diag_prop)
             result = namedtuple("result","probs grad_new diag_prop") 
             return result(probs, grad_new, diag_prop)
         elif self.prob_name == "tully":
             tully= self.probabilities_tully(state, dt)
             probs = tully.probs
-            grad_new = ene_nac_grad.grad 
+            grad_new = ene_cou_grad.grad 
             result = namedtuple("result","probs grad_new, tully") 
             return result(probs, grad_new, tully)
         else:
@@ -367,17 +387,20 @@ class SurfaceHopping(BornOppenheimer):
             raise SystemExit("A right probability method is not defined") 
 
     def new_surface(self, state, results, crd_new, t, dt):
-        ene_nac_grad = self.get_ene_nac_grad(crd_new)
-        grad_probs = self.new_prob_grad(state, ene_nac_grad, dt)
-        sur_hop = self.surface_hopping(state, ene_nac_grad, grad_probs.probs)
+        ene_cou_grad = self.get_ene_cou_grad(crd_new)
+        grad_probs = self.new_prob_grad(state, ene_cou_grad, dt)
+        sur_hop = self.surface_hopping(state, ene_cou_grad, grad_probs.probs)
         results.print_var(t, dt, sur_hop, state) #printing variables 
         results.save_db(t,state) #save variables in database
-        state.ene = ene_nac_grad.ene
+        state.ene = ene_cou_grad.ene
         state.epot = state.ene[state.instate]
-        state.u = ene_nac_grad.u
+        state.u = ene_cou_grad.u
         self.new_ncoeff(state, grad_probs)
-        state.nac = ene_nac_grad.nac
-        state.vk = self.vk_coupl_matrix(state.vel, state.nac)
+        if self.coupling == "nacs":
+            state.nac = ene_cou_grad.nac
+            state.vk = self.vk_coupl_matrix(state)
+        elif self.coupling == "wf_overlap":
+            state.vk = ene_cou_grad.wf_ov 
         state.ekin = self.cal_ekin(state.mass, state.vel)
         return grad_probs.grad_new
 
@@ -385,9 +408,6 @@ class State(Colt):
 
     _questions = """ 
     # chosen parameters
-#    crd = -10.0 :: float
-#    vel = 0.004 :: float
-#    mass = 2000.0 :: float
     db_file = :: existing_file 
     t = 0.0 :: float
     dt = 1.0 :: float
@@ -397,11 +417,12 @@ class State(Colt):
     nstates = 2 :: int
     states = 0 1 :: ilist
     ncoeff = 0.0 1.0 :: flist
-    prob = tully :: str 
-    method = Born_Oppenheimer :: str 
+    prob = tully :: str :: tully, diagonal     
+    coupling = nacs :: str :: nacs, wf_overlap
+    method = Surface_Hopping :: str :: Surface_Hopping, Born_Oppenheimer  
     """
     
-    def __init__(self, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, method, atomids):
+    def __init__(self, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, coupling, method, atomids):
         self.crd = crd
         self.natoms = len(crd)
         self.atomids = atomids
@@ -415,6 +436,7 @@ class State(Colt):
         self.states = states
         self.ncoeff = ncoeff
         self.prob = prob
+        self.coupling = coupling
         self.method = method
         self.ekin = 0
         self.epot = 0
@@ -439,8 +461,9 @@ class State(Colt):
         states = config['states']
         ncoeff = config['ncoeff']
         prob = config['prob']
+        coupling = config['coupling']
         method = config['method']
-        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, method, atomids)  
+        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, coupling, method, atomids)  
 
     @staticmethod
     def read_db(db_file):
@@ -452,8 +475,8 @@ class State(Colt):
         return crd, vel, mass, atomids
 
     @classmethod
-    def from_initial(cls, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, method):
-        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, method)
+    def from_initial(cls, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, coupling, method):
+        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, coupling, method)
 
 class PrintResults:
  
@@ -497,14 +520,15 @@ class PrintResults:
         vel = state.vel
         crd = state.crd
         prob = state.prob
+        coupling = state.coupling
         dt = state.dt
         mdsteps = state.mdsteps
         instate = state.instate
         self.instate = instate
         nstates = state.nstates
         ncoeff = state.ncoeff
-        ack = namedtuple("ack", "title vel crd based actors prob dt mdsteps instate nstates ncoeff")
-        return ack(title, vel, crd, based, contributors, prob, dt, mdsteps, instate, nstates, ncoeff)
+        ack = namedtuple("ack", "title vel crd based actors prob coupling dt mdsteps instate nstates ncoeff")
+        return ack(title, vel, crd, based, contributors, prob, coupling, dt, mdsteps, instate, nstates, ncoeff)
 
     def print_head(self, state):
         ack = self.print_acknowledgment(state)  
@@ -512,13 +536,14 @@ class PrintResults:
             self.gen_results.write(f"\n{ack.title:=^{self.large}}\n")
             self.gen_results.write(f"\n{ack.based:^{self.large}}\n")
             self.gen_results.write(f"{ack.actors:^{self.large}}\n")        
-            self.gen_results.write(f"Initial parameters:\n")
+            self.gen_results.write(f"\nInitial parameters:\n")
             self.gen_results.write(f"   Time step: {ack.dt}\n")
             self.gen_results.write(f"   MD steps: {ack.mdsteps}\n")
             self.gen_results.write(f"   Number of states: {ack.nstates}\n")
             self.gen_results.write(f"   Initial population: {ack.ncoeff}\n")
             self.gen_results.write(f"   Initial state: {ack.instate}\n")
             self.gen_results.write(f"   Probability method: {ack.prob}\n")
+            self.gen_results.write(f"   Coupling: {ack.coupling}\n")
             self.gen_results.write(f"Computing a trajectory surface hopping simulation:\n")
             self.gen_results.write(self.dash + "\n")
             head = namedtuple("head","steps t ekin epot etotal hopp random state")
