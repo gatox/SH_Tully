@@ -187,6 +187,8 @@ class Propagator:
         instate = state.instate
         ene = state.ene
         vk = state.vk
+        print(ene)
+        print(vk)
         h_total = np.diag(ene) - 1j*(vk)
         p_mch = self.mch_propagator(ene, vk, dt)
         probs = (2.0 * np.imag(rho_old[instate,:] * h_total[:,instate]) * dt)/(np.real(rho_old[instate,instate])) 
