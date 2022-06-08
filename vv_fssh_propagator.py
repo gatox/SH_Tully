@@ -139,6 +139,9 @@ class Propagator:
 
     def mch_propagator(self, h_mch, vk, dt):
         h_total = np.diag(h_mch) - 1j*(vk) 
+        #print(vk)
+        #print(h_mch)
+        #print(h_total)
         ene, u = np.linalg.eigh(h_total)
         p_mch = np.linalg.multi_dot([u, np.diag(np.exp( -1j * ene * dt)), u.T.conj()])
         return p_mch
@@ -428,6 +431,7 @@ class SurfaceHopping(BornOppenheimer):
         propagator = Propagator(state)
         grad_probs = propagator.new_prob_grad(state, ene_cou_grad, dt)
         sur_hop = self.surface_hopping(state, ene_cou_grad, grad_probs.probs)
+        #print(sur_hop)
         results.print_var(t, dt, sur_hop, state) #printing variables 
         results.save_db(t,state) #save variables in database
         state.ene = ene_cou_grad.ene
