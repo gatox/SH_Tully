@@ -47,7 +47,6 @@ class VelocityVerletPropagator:
             self.t += self.dt 
         results.print_bottom(state)
 
-
     def accelerations(self, state, grad):
         if np.isscalar(state.mass) and np.isscalar(grad[state.instate]):
             return -grad[state.instate]/state.mass
@@ -80,8 +79,8 @@ class BornOppenheimer:
         self.spp = SurfacePointProvider.from_questions(["energy","gradient"], self.nstates, self.natoms, config ="spp.inp", atomids = state.atomids)
 
     @abstractmethod
-    def get_gradient(self, crd):
-        result = self.spp.request(crd, ['gradient'])
+    def get_gradient(self, crd, curr_state):
+        result = self.spp.request(crd, ['gradient'], states=[curr_state])
         return result['gradient']
 
     def get_energy(self, crd):
@@ -99,13 +98,13 @@ class BornOppenheimer:
     
     def setup(self, state):
         state.ene = self.get_energy(state.crd)
-        grad = self.get_gradient(state.crd)
+        grad = self.get_gradient(state.crd, state.instate)
         state.epot = state.ene[state.instate]
         state.ekin = self.cal_ekin(state.mass, state.vel)
         return grad
 
     def new_surface(self, state, results, crd_new, t, dt):
-        grad_new = self.get_gradient(crd_new)
+        grad_new = self.get_gradient(crd_new, state.instate)
         results.print_bh_var(t, dt, state) #printing variables 
         results.save_db(t,state) #save variables in database
         state.ene = self.get_energy(crd_new)
@@ -130,7 +129,7 @@ class Propagator:
         g_mch = ene_cou_grad.grad
         if self.prob_name == "diagonal":
             u = ene_cou_grad.u
-            g_diag = {}
+            g_diag = {} #it must request all the gradients for all the electronic states in diagonal approach 
             for i in range(self.nstates):
                 g_diag.update({i:np.dot(u.T.conj()[i,:],u[:,i]).real*g_mch[i]})
             return g_diag
@@ -139,14 +138,11 @@ class Propagator:
 
     def mch_propagator(self, h_mch, vk, dt):
         h_total = np.diag(h_mch) - 1j*(vk) 
-        #print(vk)
-        #print(h_mch)
-        #print(h_total)
         ene, u = np.linalg.eigh(h_total)
         p_mch = np.linalg.multi_dot([u, np.diag(np.exp( -1j * ene * dt)), u.T.conj()])
         return p_mch
 
-    def elec_density_new(self, rho, p_mch):
+    def elec_density_new(self, state,  rho_old, p_mch):
         """ Computing propagation and new density:
             D and U are diagonal and unitary matrices of hamiltonian 
             rho_ij(t) = c_i(t)*c_j(t)^{*}
@@ -155,22 +151,10 @@ class Propagator:
                               = U*exp(-j*D*dt)*U.T*c_i(t)*c_j(t)^{*}*U*exp(j*D*dt)*U.T
                               = U*exp(-j*D*dt)*U.T*rho_ij(t)*U*exp(j*D*dt)*U.T
         """
-        return np.linalg.multi_dot([p_mch, rho, p_mch.T.conj()])
-
-    def diag_propagator(self, ene_cou_grad, dt, state):
-        c_mch = state.ncoeff
-        u_new = ene_cou_grad.u
-        u = state.u
-        ene = state.ene
-        vk = state.vk
-        if isinstance(c_mch, np.ndarray) != True:
-            c_mch = np.array(c_mch)
-        c_diag = np.dot(u.T.conj(),c_mch)
-        p_mch_new = self.mch_propagator(ene, vk, dt)
-        p_diag_new = np.dot(u_new.T.conj() ,np.dot(p_mch_new,u))
-        c_diag_new = np.dot(p_diag_new,c_diag) 
-        diag_prop = namedtuple("diag_prop","c_diag, c_diag_new, p_diag_new")
-        return diag_prop(c_diag, c_diag_new, p_diag_new)
+        c_dt = np.linalg.multi_dot([p_mch, state.ncoeff]) 
+        rho_new = np.linalg.multi_dot([p_mch, rho_old, p_mch.T.conj()])   
+        c_rho_new = namedtuple("c_rho_new", "c_dt rho_new") 
+        return c_rho_new(c_dt, rho_new)
 
     def hopping_probability(self, c_j_dt, c_i_dt, c_i_t, p_diag_ji, p_diag_ii): 
         prob_factor_1 = 1 - np.abs(np.dot(c_i_dt, c_i_dt.conj()))/np.abs(np.dot(c_i_t, c_i_t.conj())) 
@@ -186,7 +170,7 @@ class Propagator:
         return prob_ji
    
     def probabilities_tully(self, state, dt):
-        rho_old = state.rho
+        rho_old = self.elec_density(state)
         instate = state.instate
         ene = state.ene
         vk = state.vk
@@ -233,7 +217,7 @@ class Propagator:
             result = namedtuple("result","probs grad_new diag_prop") 
             return result(probs, grad_new, diag_prop)
         elif self.prob_name == "tully":
-            tully= self.probabilities_tully(state, dt)
+            tully = self.probabilities_tully(state, dt)
             probs = tully.probs
             grad_new = ene_cou_grad.grad 
             result = namedtuple("result","probs grad_new, tully") 
@@ -241,15 +225,47 @@ class Propagator:
         else:
             raise SystemExit("A right probability method is not defined")
 
+    def new_hopp_grad(self, state, u_grad):
+        if self.prob_name == "diagonal":
+            grad_new = self.grad(u_grad)
+            return grad_new 
+        elif self.prob_name == "tully":
+            grad_new = u_grad.grad 
+            return grad_new 
+        else:
+            raise SystemExit("A right probability method is not defined")
+
+    def check_coherence(self, state, ncoeff):
+        if state.decoherence == "yes":
+            const = 1.0 + (0.1/state.ekin)
+            curr = state.instate
+            add = 0.0
+            ncoeff_prima = [0.0]*state.nstates
+            for k in range(state.nstates):
+                if k != curr:
+                    t_kl = const/np.abs(state.ene[curr]-state.ene[k])
+                    ncoeff_prima[k] = ncoeff[k]*np.exp(-0.5*state.dt/t_kl)
+                    add += np.abs(np.dot(ncoeff_prima[k], ncoeff_prima[k].conj()))
+            ncoeff_prima[curr] = ncoeff[curr]*np.sqrt((1.0 - add)/(np.abs(np.dot(ncoeff[curr], ncoeff[curr].conj()))))
+            if isinstance(ncoeff_prima, np.ndarray) != True:
+                ncoeff_prima = np.array(ncoeff_prima)
+            state.ncoeff = ncoeff_prima 
+        else:
+            if isinstance(ncoeff, np.ndarray) != True:
+                ncoeff = np.array(ncoeff)
+            state.ncoeff = ncoeff 
+
     def new_ncoeff(self, state, grad_probs):
         if self.prob_name == "diagonal":   
-            state.ncoeff = np.dot(state.u, grad_probs.diag_prop.c_diag_new)
+            ncoeff = np.dot(state.u, grad_probs.diag_prop.c_diag_new)
+            self.check_coherence(state, ncoeff)
             state.rho = self.elec_density(state)
         elif self.prob_name == "tully":
-            state.rho = self.elec_density_new(grad_probs.tully.rho_old, grad_probs.tully.p_mch)
-            state.ncoeff = np.diag(grad_probs.tully.rho_old.real) 
+            c_rho_new = self.elec_density_new(state, grad_probs.tully.rho_old, grad_probs.tully.p_mch)
+            state.rho = c_rho_new.rho_new
+            self.check_coherence(state, c_rho_new.c_dt)
         else:
-            raise SystemExit("A right probability method is not defined") 
+            raise SystemExit("A right probability method is not defined")  
 
 class RescaleVelocity:
 
@@ -317,7 +333,6 @@ class RescaleVelocity:
             and the current nuclear velocity is ajusted in order 
             to preserve the total energy.
             """
-            state.instate = state_new
             if beta < 0.0:
                 gama_ji = (beta + np.sqrt(beta**2 + 4*alpha*diff))/(2*alpha)
                 self.new_velocity(state, gama_ji, direct)
@@ -340,8 +355,8 @@ class SurfaceHopping(BornOppenheimer):
             needed_properties = ["energy", "gradient", "wf_overlap"]
             self.spp = SurfacePointProvider.from_questions(["energy","gradient","wf_overlap"], self.nstates, self.natoms, config ="spp.inp", atomids = state.atomids)
 
-    def get_gradient(self, crd):
-        result = self.spp.request(crd, ['gradient'])
+    def get_gradient(self, crd, curr_state):
+        result = self.spp.request(crd, ['gradient'], states=[curr_state])
         return result['gradient']
 
     def get_energy(self, crd):
@@ -356,9 +371,9 @@ class SurfaceHopping(BornOppenheimer):
             result = self.spp.request(crd, ['wf_overlap'])
             return result['wf_overlap']
             
-    def get_ene_cou_grad(self, crd):
+    def get_ene_cou_grad(self, crd, curr_state):
         h_mch = self.get_energy(crd)
-        grad = self.get_gradient(crd) 
+        grad = self.get_gradient(crd, curr_state) 
         ene, u = np.linalg.eigh(np.diag(h_mch))
         if self.coupling == "nacs":
             nac = self.get_coupling(crd)
@@ -368,6 +383,12 @@ class SurfaceHopping(BornOppenheimer):
             wf_ov = self.get_coupling(crd)
             ene_cou_grad = namedtuple("ene_cou_grad", "ene u wf_ov grad")
             return ene_cou_grad(ene, u, wf_ov, grad)
+
+    def get_hopp_u_grad(self, crd, state):
+        grad = self.get_gradient(crd, state.instate)
+        u = state.u
+        u_grad = namedtuple("u_grad", "u grad")
+        return u_grad(u, grad) 
 
     def vk_coupl_matrix(self, state):
         vel = state.vel
@@ -397,7 +418,7 @@ class SurfaceHopping(BornOppenheimer):
         return ekin
 
     def setup(self, state):
-        ene_cou_grad = self.get_ene_cou_grad(state.crd)
+        ene_cou_grad = self.get_ene_cou_grad(state.crd, state.instate)
         propagator = Propagator(state)
         grad_old = propagator.grad(ene_cou_grad)
         state.ene = ene_cou_grad.ene
@@ -421,19 +442,25 @@ class SurfaceHopping(BornOppenheimer):
                 if hopps[i]:
                     state_new = state.states[i]
                     break
+            else:
+                state_new = state.instate
             rescale = RescaleVelocity(state, ene_cou_grad)
             rescale.rescale_velocity(state, state_new) 
-        sur_hop = namedtuple("sur_hop", "aleatory acc_probs")
-        return sur_hop(aleatory, acc_probs[state.instate])
+        else:
+            state_new = state.instate
+        state.instate = state_new
+        sur_hop = namedtuple("sur_hop", "aleatory acc_probs state_new")
+        return sur_hop(aleatory, acc_probs[state_new], state_new)
 
     def new_surface(self, state, results, crd_new, t, dt):
-        ene_cou_grad = self.get_ene_cou_grad(crd_new)
+        ene_cou_grad = self.get_ene_cou_grad(crd_new, state.instate)
         propagator = Propagator(state)
         grad_probs = propagator.new_prob_grad(state, ene_cou_grad, dt)
+        old_state = state.instate
         sur_hop = self.surface_hopping(state, ene_cou_grad, grad_probs.probs)
-        #print(sur_hop)
-        results.print_var(t, dt, sur_hop, state) #printing variables 
+        state.ekin = self.cal_ekin(state.mass, state.vel)
         results.save_db(t,state) #save variables in database
+        results.print_var(t, dt, sur_hop, state) #printing variables 
         state.ene = ene_cou_grad.ene
         state.epot = state.ene[state.instate]
         state.u = ene_cou_grad.u
@@ -443,8 +470,13 @@ class SurfaceHopping(BornOppenheimer):
             state.vk = self.vk_coupl_matrix(state)
         elif self.coupling == "wf_overlap":
             state.vk = ene_cou_grad.wf_ov 
-        state.ekin = self.cal_ekin(state.mass, state.vel)
-        return grad_probs.grad_new
+        if old_state == sur_hop.state_new:
+            return grad_probs.grad_new
+        else:
+            u_grad = self.get_hopp_u_grad(crd_new, state)
+            propagator = Propagator(state)
+            grad_new = propagator.new_hopp_grad(state, u_grad)
+            return grad_new
 
 class State(Colt):
 
@@ -463,9 +495,10 @@ class State(Colt):
     rescale_vel = momentum :: str :: momentum, nacs 
     coupling = nacs :: str :: nacs, wf_overlap
     method = Surface_Hopping :: str :: Surface_Hopping, Born_Oppenheimer  
+    decoherence = not :: str :: not, yes
     """
     
-    def __init__(self, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, atomids):
+    def __init__(self, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence, atomids):
         self.crd = crd
         self.natoms = len(crd)
         self.atomids = atomids
@@ -484,6 +517,7 @@ class State(Colt):
         if self.rescale_vel == "nacs" and self.coupling != "nacs":
             raise SystemExit("Wrong coupling method or wrong rescaling velocity approach")
         self.method = method
+        self.decoherence = decoherence
         self.ekin = 0
         self.epot = 0
         self.nac = {}
@@ -510,7 +544,8 @@ class State(Colt):
         rescale_vel = config['rescale_vel']
         coupling = config['coupling']
         method = config['method']
-        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, atomids)  
+        decoherence = config['decoherence']
+        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence, atomids)  
 
     @staticmethod
     def read_db(db_file):
@@ -522,8 +557,8 @@ class State(Colt):
         return crd, vel, mass, atomids
 
     @classmethod
-    def from_initial(cls, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method):
-        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method)
+    def from_initial(cls, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence):
+        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence)
 
 class PrintResults:
  
@@ -536,6 +571,11 @@ class PrintResults:
         self.hopping = []
         self.tra_time = time.time()
 
+    def norm_coeff(self, ncoeff):
+        if isinstance(ncoeff, np.ndarray) != True:
+            ncoeff = np.array(ncoeff)  
+        return np.diag(np.outer(ncoeff, ncoeff.conj()).real)
+
     def save_db(self, t, state):
         nstates = state.nstates
         if np.isscalar(state.crd):
@@ -545,7 +585,7 @@ class PrintResults:
         if state.method == "Surface_Hopping":
             db = PySurfDB.generate_database("results.db", data=["crd","veloc","energy","time","ekin","epot","etot","fosc","currstate"], dimensions ={"natoms":natoms, "nstates":nstates})
             db.set("currstate",state.instate)
-            db.set("fosc",state.ncoeff)
+            db.set("fosc",self.norm_coeff(state.ncoeff))
         if state.method == "Born_Oppenheimer":
             db = PySurfDB.generate_database("results.db", data=["crd","veloc","energy","time","ekin","epot","etot"], dimensions ={"natoms":natoms, "nstates":nstates})
         db.set("crd",state.crd)
@@ -574,9 +614,10 @@ class PrintResults:
         instate = state.instate
         self.instate = instate
         nstates = state.nstates
-        ncoeff = state.ncoeff
-        ack = namedtuple("ack", "title vel crd based actors prob coupling rescale_vel dt mdsteps instate nstates ncoeff")
-        return ack(title, vel, crd, based, contributors, prob, coupling, rescale_vel, dt, mdsteps, instate, nstates, ncoeff)
+        ncoeff = self.norm_coeff(state.ncoeff)
+        decoherence = state.decoherence
+        ack = namedtuple("ack", "title vel crd based actors prob coupling rescale_vel dt mdsteps instate nstates ncoeff decoherence")
+        return ack(title, vel, crd, based, contributors, prob, coupling, rescale_vel, dt, mdsteps, instate, nstates, ncoeff, decoherence)
 
     def print_head(self, state):
         ack = self.print_acknowledgment(state)  
@@ -593,6 +634,7 @@ class PrintResults:
             self.gen_results.write(f"   Probability method: {ack.prob}\n")
             self.gen_results.write(f"   Coupling: {ack.coupling}\n")
             self.gen_results.write(f"   Rescale of velocity: {ack.rescale_vel}\n")
+            self.gen_results.write(f"   Decoherence: {ack.decoherence}\n")
             self.gen_results.write(f"Computing a trajectory surface hopping simulation:\n")
             self.gen_results.write(self.dash + "\n")
             head = namedtuple("head","steps t ekin epot etotal hopp random state")
