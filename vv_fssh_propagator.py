@@ -1,6 +1,8 @@
-import numpy as np
-import random
-import time
+from numpy import (isscalar, zeros, dot, 
+                   array, ndarray, complex128, outer, diag, linalg, exp, 
+                   abs, imag, real, maximum, sqrt, cumsum, less, copy, sum)
+from random import uniform
+from time import (time, ctime)
 
 from collections import namedtuple
 from abc import abstractmethod
@@ -48,11 +50,11 @@ class VelocityVerletPropagator:
         results.print_bottom(state)
 
     def accelerations(self, state, grad):
-        if np.isscalar(state.mass) and np.isscalar(grad[state.instate]):
+        if isscalar(state.mass) and isscalar(grad[state.instate]):
             return -grad[state.instate]/state.mass
         else:
             gradient = grad[state.instate]
-            acce = np.zeros(gradient.shape)
+            acce = zeros(gradient.shape)
             for i,m in enumerate(state.mass):
                 acce[i] = -gradient[i]/m
             return acce
@@ -89,11 +91,11 @@ class BornOppenheimer:
 
     def cal_ekin(self, mass, vel):
         ekin = 0
-        if np.isscalar(mass) and np.isscalar(vel):
+        if isscalar(mass) and isscalar(vel):
             ekin = 0.5*mass*vel**2
         else:
             for i, m in enumerate(mass):
-                ekin += 0.5*m*np.dot(vel[i],vel[i])
+                ekin += 0.5*m*dot(vel[i],vel[i])
         return ekin
     
     def setup(self, state):
@@ -121,9 +123,9 @@ class Propagator:
 
     def elec_density(self, state):
         c_mch = state.ncoeff
-        if isinstance(c_mch, np.ndarray) != True:
-            c_mch = np.array(c_mch,dtype=np.complex128) 
-        return np.outer(c_mch, c_mch.conj())
+        if isinstance(c_mch, ndarray) != True:
+            c_mch = array(c_mch,dtype=complex128) 
+        return outer(c_mch, c_mch.conj())
 
     def grad(self, ene_cou_grad):
         g_mch = ene_cou_grad.grad
@@ -131,15 +133,15 @@ class Propagator:
             u = ene_cou_grad.u
             g_diag = {} #it must request all the gradients for all the electronic states in diagonal approach 
             for i in range(self.nstates):
-                g_diag.update({i:np.dot(u.T.conj()[i,:],u[:,i]).real*g_mch[i]})
+                g_diag.update({i:dot(u.T.conj()[i,:],u[:,i]).real*g_mch[i]})
             return g_diag
         elif self.prob_name == "tully":
             return g_mch
 
     def mch_propagator(self, h_mch, vk, dt):
-        h_total = np.diag(h_mch) - 1j*(vk) 
-        ene, u = np.linalg.eigh(h_total)
-        p_mch = np.linalg.multi_dot([u, np.diag(np.exp( -1j * ene * dt)), u.T.conj()])
+        h_total = diag(h_mch) - 1j*(vk) 
+        ene, u = linalg.eigh(h_total)
+        p_mch = linalg.multi_dot([u, diag(exp( -1j * ene * dt)), u.T.conj()])
         return p_mch
 
     def elec_density_new(self, state,  rho_old, p_mch):
@@ -151,16 +153,16 @@ class Propagator:
                               = U*exp(-j*D*dt)*U.T*c_i(t)*c_j(t)^{*}*U*exp(j*D*dt)*U.T
                               = U*exp(-j*D*dt)*U.T*rho_ij(t)*U*exp(j*D*dt)*U.T
         """
-        c_dt = np.linalg.multi_dot([p_mch, state.ncoeff]) 
-        rho_new = np.linalg.multi_dot([p_mch, rho_old, p_mch.T.conj()])   
+        c_dt = linalg.multi_dot([p_mch, state.ncoeff]) 
+        rho_new = linalg.multi_dot([p_mch, rho_old, p_mch.T.conj()])   
         c_rho_new = namedtuple("c_rho_new", "c_dt rho_new") 
         return c_rho_new(c_dt, rho_new)
 
     def hopping_probability(self, c_j_dt, c_i_dt, c_i_t, p_diag_ji, p_diag_ii): 
-        prob_factor_1 = 1 - np.abs(np.dot(c_i_dt, c_i_dt.conj()))/np.abs(np.dot(c_i_t, c_i_t.conj())) 
-        prob_factor_2_N = ( np.dot(c_j_dt, np.dot(p_diag_ji.conj(), c_i_t.conj()) ) ).real
-        prob_factor_2_D = ( np.abs(np.dot(c_i_t, c_i_t.conj())) -\
-                       ( np.dot(c_i_dt, np.dot(p_diag_ii.conj(), c_i_t.conj()) ) ).real)
+        prob_factor_1 = 1 - abs(dot(c_i_dt, c_i_dt.conj()))/abs(dot(c_i_t, c_i_t.conj())) 
+        prob_factor_2_N = ( dot(c_j_dt, dot(p_diag_ji.conj(), c_i_t.conj()) ) ).real
+        prob_factor_2_D = ( abs(dot(c_i_t, c_i_t.conj())) -\
+                       ( dot(c_i_dt, dot(p_diag_ii.conj(), c_i_t.conj()) ) ).real)
         if prob_factor_2_D == 0:
             prob_ji = 0.0
         elif prob_factor_1*((prob_factor_2_N/prob_factor_2_D)) < 0:
@@ -174,11 +176,11 @@ class Propagator:
         instate = state.instate
         ene = state.ene
         vk = state.vk
-        h_total = np.diag(ene) - 1j*(vk)
+        h_total = diag(ene) - 1j*(vk)
         p_mch = self.mch_propagator(ene, vk, dt)
-        probs = (2.0 * np.imag(rho_old[instate,:] * h_total[:,instate]) * dt)/(np.real(rho_old[instate,instate])) 
+        probs = (2.0 * imag(rho_old[instate,:] * h_total[:,instate]) * dt)/(real(rho_old[instate,instate])) 
         probs[instate] = 0.0
-        probs = np.maximum(probs, 0.0)
+        probs = maximum(probs, 0.0)
         tully = namedtuple("tully", "probs rho_old p_mch")
         return tully(probs, rho_old, p_mch) 
  
@@ -186,7 +188,7 @@ class Propagator:
         c_diag_dt = diag_prop.c_diag_new
         c_diag = diag_prop.c_diag
         p_diag_dt = diag_prop.p_diag_new
-        probs = np.zeros(self.nstates)
+        probs = zeros(self.nstates)
         instate = state.instate
         for i in range(self.nstates):
             probs[i] = self.hopping_probability(c_diag_dt[i], c_diag_dt[instate],\
@@ -200,12 +202,12 @@ class Propagator:
         u = state.u
         ene = state.ene
         vk = state.vk
-        if isinstance(c_mch, np.ndarray) != True:
-            c_mch = np.array(c_mch)
-        c_diag = np.dot(u.T.conj(),c_mch)
+        if isinstance(c_mch, ndarray) != True:
+            c_mch = array(c_mch)
+        c_diag = dot(u.T.conj(),c_mch)
         p_mch_new = self.mch_propagator(ene, vk, dt)
-        p_diag_new = np.dot(u_new.T.conj() ,np.dot(p_mch_new,u))
-        c_diag_new = np.dot(p_diag_new,c_diag) 
+        p_diag_new = dot(u_new.T.conj() ,dot(p_mch_new,u))
+        c_diag_new = dot(p_diag_new,c_diag) 
         diag_prop = namedtuple("diag_prop","c_diag, c_diag_new, p_diag_new")
         return diag_prop(c_diag, c_diag_new, p_diag_new)
  
@@ -243,21 +245,21 @@ class Propagator:
             ncoeff_prima = [0.0]*state.nstates
             for k in range(state.nstates):
                 if k != curr:
-                    t_kl = const/np.abs(state.ene[curr]-state.ene[k])
-                    ncoeff_prima[k] = ncoeff[k]*np.exp(-0.5*state.dt/t_kl)
-                    add += np.abs(np.dot(ncoeff_prima[k], ncoeff_prima[k].conj()))
-            ncoeff_prima[curr] = ncoeff[curr]*np.sqrt((1.0 - add)/(np.abs(np.dot(ncoeff[curr], ncoeff[curr].conj()))))
-            if isinstance(ncoeff_prima, np.ndarray) != True:
-                ncoeff_prima = np.array(ncoeff_prima)
+                    t_kl = const/abs(state.ene[curr]-state.ene[k])
+                    ncoeff_prima[k] = ncoeff[k]*exp(-0.5*state.dt/t_kl)
+                    add += abs(dot(ncoeff_prima[k], ncoeff_prima[k].conj()))
+            ncoeff_prima[curr] = ncoeff[curr]*sqrt((1.0 - add)/(abs(dot(ncoeff[curr], ncoeff[curr].conj()))))
+            if isinstance(ncoeff_prima, ndarray) != True:
+                ncoeff_prima = array(ncoeff_prima)
             state.ncoeff = ncoeff_prima 
         else:
-            if isinstance(ncoeff, np.ndarray) != True:
-                ncoeff = np.array(ncoeff)
+            if isinstance(ncoeff, ndarray) != True:
+                ncoeff = array(ncoeff)
             state.ncoeff = ncoeff 
 
     def new_ncoeff(self, state, grad_probs):
         if self.prob_name == "diagonal":   
-            ncoeff = np.dot(state.u, grad_probs.diag_prop.c_diag_new)
+            ncoeff = dot(state.u, grad_probs.diag_prop.c_diag_new)
             self.check_coherence(state, ncoeff)
             state.rho = self.elec_density(state)
         elif self.prob_name == "tully":
@@ -283,7 +285,7 @@ class RescaleVelocity:
         if self.rescale_vel == "nacs" and self.coupling == "nacs":
             return (0.5)*(self.nac_old[state_new,self.state_old] + self.nac_new[state_new,self.state_old])
         elif self.rescale_vel == "momentum":
-            p = np.zeros(vel.shape)
+            p = zeros(vel.shape)
             for i, m in enumerate(self.mass):
                 p[i] = vel[i]*m
             return p
@@ -293,22 +295,22 @@ class RescaleVelocity:
         return self.ene_new[self.state_old] - self.ene_new[state_new]
     
     def beta_ji(self, vel, direct):
-        if np.isscalar(vel):
+        if isscalar(vel):
             return vel*direct
         else:
-            return np.dot(vel.flatten(),direct.flatten())
+            return dot(vel.flatten(),direct.flatten())
     
     def alpha_ji(self, direct):
-        if np.isscalar(self.mass):
+        if isscalar(self.mass):
             return 0.5*(direct**2)/self.mass
         else:
             alpha = 0.0
             for i, m in enumerate(self.mass):
-                alpha += np.dot(direct[i], direct[i])/m
+                alpha += dot(direct[i], direct[i])/m
             return 0.5*alpha
 
     def new_velocity(self, state, gama_ji, direct):
-        if np.isscalar(state.vel) and np.isscalar(self.mass):
+        if isscalar(state.vel) and isscalar(self.mass):
             state.vel = state.vel - gama_ji*(direct/self.mass)
         else:
             for i, m in enumerate(self.mass):
@@ -334,10 +336,10 @@ class RescaleVelocity:
             to preserve the total energy.
             """
             if beta < 0.0:
-                gama_ji = (beta + np.sqrt(beta**2 + 4*alpha*diff))/(2*alpha)
+                gama_ji = (beta + sqrt(beta**2 + 4*alpha*diff))/(2*alpha)
                 self.new_velocity(state, gama_ji, direct)
             else:
-                gama_ji = (beta - np.sqrt(beta**2 + 4*alpha*diff))/(2*alpha)
+                gama_ji = (beta - sqrt(beta**2 + 4*alpha*diff))/(2*alpha)
                 self.new_velocity(state, gama_ji, direct)
 
 
@@ -374,7 +376,7 @@ class SurfaceHopping(BornOppenheimer):
     def get_ene_cou_grad(self, crd, curr_state):
         h_mch = self.get_energy(crd)
         grad = self.get_gradient(crd, curr_state) 
-        ene, u = np.linalg.eigh(np.diag(h_mch))
+        ene, u = linalg.eigh(diag(h_mch))
         if self.coupling == "nacs":
             nac = self.get_coupling(crd)
             ene_cou_grad = namedtuple("ene_cou_grad", "ene u nac grad")
@@ -393,8 +395,8 @@ class SurfaceHopping(BornOppenheimer):
     def vk_coupl_matrix(self, state):
         vel = state.vel
         nac = state.nac
-        vk = np.zeros((self.nstates,self.nstates))
-        if np.isscalar(vel):
+        vk = zeros((self.nstates,self.nstates))
+        if isscalar(vel):
             for i in range(self.nstates):
                 for j in range(self.nstates):
                     if i < j:
@@ -404,17 +406,17 @@ class SurfaceHopping(BornOppenheimer):
             for i in range(self.nstates):
                 for j in range(self.nstates):
                     if i < j:
-                        vk[i,j] = np.dot(vel.flatten(),nac[i,j].flatten())
+                        vk[i,j] = dot(vel.flatten(),nac[i,j].flatten())
                         vk[j,i] = -vk[i,j]
         return vk
 
     def cal_ekin(self, mass, vel):
         ekin = 0
-        if np.isscalar(mass) and np.isscalar(vel):
+        if isscalar(mass) and isscalar(vel):
             ekin = 0.5*mass*vel**2
         else:
             for i, m in enumerate(mass):
-                ekin += 0.5*m*np.dot(vel[i],vel[i])
+                ekin += 0.5*m*dot(vel[i],vel[i])
         return ekin
 
     def setup(self, state):
@@ -434,9 +436,9 @@ class SurfaceHopping(BornOppenheimer):
         return grad_old
 
     def surface_hopping(self, state, ene_cou_grad, probs):            
-        aleatory = random.uniform(0,1)
-        acc_probs = np.cumsum(probs)
-        hopps = np.less(aleatory, acc_probs)
+        aleatory = uniform(0,1)
+        acc_probs = cumsum(probs)
+        hopps = less(aleatory, acc_probs)
         if any(hopps):
             for i in range(self.nstates):
                 if hopps[i]:
@@ -525,10 +527,10 @@ class State(Colt):
         self.vk = []
         self.u = []
         self.rho = []
-        if np.isscalar(self.mass):
+        if isscalar(self.mass):
             self.natoms = 1
-        elif isinstance(self.mass, np.ndarray) != True:
-            self.natoms = np.array([self.mass])
+        elif isinstance(self.mass, ndarray) != True:
+            self.natoms = array([self.mass])
 
     @classmethod
     def from_config(cls, config):
@@ -550,10 +552,10 @@ class State(Colt):
     @staticmethod
     def read_db(db_file):
         db = PySurfDB.load_database(db_file, read_only=True)
-        crd = np.copy(db['crd'][0])
-        vel = np.copy(db['veloc'][0])
-        atomids = np.copy(db['atomids'])
-        mass = np.copy(db['masses'])
+        crd = copy(db['crd'][0])
+        vel = copy(db['veloc'][0])
+        atomids = copy(db['atomids'])
+        mass = copy(db['masses'])
         return crd, vel, mass, atomids
 
     @classmethod
@@ -569,16 +571,16 @@ class PrintResults:
         self.dash_bo = '-' * self.large_bo
         self.gen_results = open("gen_results.out", "w")
         self.hopping = []
-        self.tra_time = time.time()
+        self.tra_time = time()
 
     def norm_coeff(self, ncoeff):
-        if isinstance(ncoeff, np.ndarray) != True:
-            ncoeff = np.array(ncoeff)  
-        return np.diag(np.outer(ncoeff, ncoeff.conj()).real)
+        if isinstance(ncoeff, ndarray) != True:
+            ncoeff = array(ncoeff)  
+        return diag(outer(ncoeff, ncoeff.conj()).real)
 
     def save_db(self, t, state):
         nstates = state.nstates
-        if np.isscalar(state.crd):
+        if isscalar(state.crd):
             natoms = int(1)
         else:
             natoms = len(state.crd)
@@ -598,7 +600,7 @@ class PrintResults:
         db.increase  # It increases the frame
 
     def dis_dimer(self, a,b):
-        return np.sqrt(np.sum((a-b)**2))
+        return sqrt(sum((a-b)**2))
     
     def print_acknowledgment(self, state):
         title = " Trajectory Surface Hopping Module "
@@ -702,7 +704,7 @@ class PrintResults:
             self.t_crd_vel_ene_popu.close()
             self.gen_results.write(self.dash_bo + "\n")
             self.gen_results.write(f"Some important variables are printed in t_crd_vel_ene_popu.csv and results.db\n")
-        time_seg = time.time()-self.tra_time
+        time_seg = time()-self.tra_time
         day = time_seg // (24*3600)
         time_seg = time_seg % (24*3600)
         hour = time_seg // 3600
@@ -712,7 +714,7 @@ class PrintResults:
         seconds = time_seg
         self.gen_results.write(f"Total job time: {day:>0.0f}:{hour:>0.0f}:{minutes:>0.0f}:{seconds:>0.0f}\n")
         
-        self.gen_results.write(f"{time.ctime()}")
+        self.gen_results.write(f"{ctime()}")
         self.gen_results.close()
 
 if __name__=="__main__":
