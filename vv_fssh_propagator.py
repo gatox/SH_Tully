@@ -1,9 +1,8 @@
-from numpy import (isscalar, zeros, dot, 
+from numpy import (isscalar, zeros, zeros_like, dot, 
                    array, ndarray, complex128, outer, diag, linalg, exp, 
                    abs, imag, real, maximum, sqrt, cumsum, less, copy, sum)
 from random import uniform
 from time import (time, ctime)
-
 from collections import namedtuple
 from abc import abstractmethod
 from pysurf.spp import ModelBase, SurfacePointProvider
@@ -170,12 +169,14 @@ class Propagator:
         else:
             prob_ji = prob_factor_1*((prob_factor_2_N/prob_factor_2_D))
         return prob_ji
-   
-    def probabilities_tully(self, state, dt):
+
+    def probabilities_tully(self, state, vk_old, ene_new, dt):
         rho_old = self.elec_density(state)
         instate = state.instate
-        ene = state.ene
-        vk = state.vk
+        ene_old = state.ene
+        vk_new = state.vk
+        ene = 0.5*(ene_old + ene_new)
+        vk = 0.5*(vk_old + vk_new)
         h_total = diag(ene) - 1j*(vk)
         p_mch = self.mch_propagator(ene, vk, dt)
         probs = (2.0 * imag(rho_old[instate,:] * h_total[:,instate]) * dt)/(real(rho_old[instate,instate])) 
@@ -211,7 +212,7 @@ class Propagator:
         diag_prop = namedtuple("diag_prop","c_diag, c_diag_new, p_diag_new")
         return diag_prop(c_diag, c_diag_new, p_diag_new)
  
-    def new_prob_grad(self, state, ene_cou_grad, dt):
+    def new_prob_grad(self, state, vk_old, ene_cou_grad, dt):
         if self.prob_name == "diagonal":
             grad_new = self.grad(ene_cou_grad)
             diag_prop = self.diag_propagator(ene_cou_grad, dt, state)
@@ -219,7 +220,9 @@ class Propagator:
             result = namedtuple("result","probs grad_new diag_prop") 
             return result(probs, grad_new, diag_prop)
         elif self.prob_name == "tully":
-            tully = self.probabilities_tully(state, dt)
+            #tully = self.probabilities_tully(state, dt)
+            ene_new = ene_cou_grad.ene
+            tully = self.probabilities_tully(state, vk_old, ene_new, dt)
             probs = tully.probs
             grad_new = ene_cou_grad.grad 
             result = namedtuple("result","probs grad_new, tully") 
@@ -328,6 +331,8 @@ class RescaleVelocity:
             """
             gama_ji = beta/alpha
             self.new_velocity(state, gama_ji, direct)
+            hop = "not"
+            return hop 
         else:
             """
             If this condition is satisfied, a hopping from 
@@ -341,6 +346,8 @@ class RescaleVelocity:
             else:
                 gama_ji = (beta - sqrt(beta**2 + 4*alpha*diff))/(2*alpha)
                 self.new_velocity(state, gama_ji, direct)
+            hop = "yes"
+            return hop
 
 
 class SurfaceHopping(BornOppenheimer):
@@ -350,6 +357,7 @@ class SurfaceHopping(BornOppenheimer):
         self.mass = state.mass
         self.natoms = state.natoms
         self.coupling = state.coupling
+        self.vel_old = zeros_like(state.vel) 
         if self.coupling == "nacs":
             needed_properties = ["energy", "gradient", "nacs"]
             self.spp = SurfacePointProvider.from_questions(["energy","gradient","nacs"], self.nstates, self.natoms, config ="spp.inp", atomids = state.atomids)
@@ -392,9 +400,7 @@ class SurfaceHopping(BornOppenheimer):
         u_grad = namedtuple("u_grad", "u grad")
         return u_grad(u, grad) 
 
-    def vk_coupl_matrix(self, state):
-        vel = state.vel
-        nac = state.nac
+    def vk_coupl_matrix(self, nac, vel):
         vk = zeros((self.nstates,self.nstates))
         if isscalar(vel):
             for i in range(self.nstates):
@@ -428,7 +434,7 @@ class SurfaceHopping(BornOppenheimer):
         state.u = ene_cou_grad.u
         if self.coupling == "nacs":
             state.nac = ene_cou_grad.nac
-            state.vk = self.vk_coupl_matrix(state)
+            state.vk = self.vk_coupl_matrix(state.nac,state.vel)
         elif self.coupling == "wf_overlap":
             state.vk = ene_cou_grad.wf_ov 
         state.ekin = self.cal_ekin(state.mass, state.vel)
@@ -438,16 +444,21 @@ class SurfaceHopping(BornOppenheimer):
     def surface_hopping(self, state, ene_cou_grad, probs):            
         aleatory = uniform(0,1)
         acc_probs = cumsum(probs)
+        total = sum(acc_probs)
+        if total > 1.0:
+            acc_probs /= total
         hopps = less(aleatory, acc_probs)
         if any(hopps):
             for i in range(self.nstates):
                 if hopps[i]:
                     state_new = state.states[i]
                     break
-            else:
-                state_new = state.instate
+            #else:
+            #    state_new = state.instate
             rescale = RescaleVelocity(state, ene_cou_grad)
-            rescale.rescale_velocity(state, state_new) 
+            hop =  rescale.rescale_velocity(state, state_new) 
+            if hop == "not":
+                state_new = state.instate
         else:
             state_new = state.instate
         state.instate = state_new
@@ -456,20 +467,22 @@ class SurfaceHopping(BornOppenheimer):
 
     def new_surface(self, state, results, crd_new, t, dt):
         ene_cou_grad = self.get_ene_cou_grad(crd_new, state.instate)
+        vk_old = self.vk_coupl_matrix(state.nac,self.vel_old)
+        self.vel_old = state.vel
         propagator = Propagator(state)
-        grad_probs = propagator.new_prob_grad(state, ene_cou_grad, dt)
+        grad_probs = propagator.new_prob_grad(state, vk_old, ene_cou_grad, dt)
         old_state = state.instate
         sur_hop = self.surface_hopping(state, ene_cou_grad, grad_probs.probs)
         state.ekin = self.cal_ekin(state.mass, state.vel)
-        results.save_db(t,state) #save variables in database
-        results.print_var(t, dt, sur_hop, state) #printing variables 
         state.ene = ene_cou_grad.ene
         state.epot = state.ene[state.instate]
+        results.save_db(t,state) #save variables in database
+        results.print_var(t, dt, sur_hop, state) #printing variables 
         state.u = ene_cou_grad.u
         propagator.new_ncoeff(state, grad_probs)
         if self.coupling == "nacs":
             state.nac = ene_cou_grad.nac
-            state.vk = self.vk_coupl_matrix(state)
+            state.vk = self.vk_coupl_matrix(state.nac,state.vel)
         elif self.coupling == "wf_overlap":
             state.vk = ene_cou_grad.wf_ov 
         if old_state == sur_hop.state_new:
@@ -500,12 +513,16 @@ class State(Colt):
     decoherence = not :: str :: not, yes
     """
     
-    def __init__(self, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence, atomids):
+    def __init__(self, crd, vel, mass, model, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence, atomids):
         self.crd = crd
         self.natoms = len(crd)
         self.atomids = atomids
         self.vel = vel
         self.mass = mass
+        if model == 1:
+            self.model = True
+        else:
+            self.model = False
         self.t = t
         self.dt = dt
         self.mdsteps = mdsteps
@@ -534,7 +551,7 @@ class State(Colt):
 
     @classmethod
     def from_config(cls, config):
-        crd, vel, mass, atomids = cls.read_db(config["db_file"])
+        crd, vel, mass, atomids, model = cls.read_db(config["db_file"])
         t = config['t']
         dt = config['dt']
         mdsteps = config['mdsteps']
@@ -547,7 +564,7 @@ class State(Colt):
         coupling = config['coupling']
         method = config['method']
         decoherence = config['decoherence']
-        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence, atomids)  
+        return cls(crd, vel, mass, model, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence, atomids)  
 
     @staticmethod
     def read_db(db_file):
@@ -556,11 +573,16 @@ class State(Colt):
         vel = copy(db['veloc'][0])
         atomids = copy(db['atomids'])
         mass = copy(db['masses'])
-        return crd, vel, mass, atomids
+        model = copy(db['model'])
+        if model == 1:
+            model = True
+        else:
+            model = False
+        return crd, vel, mass, atomids, model
 
     @classmethod
-    def from_initial(cls, crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence):
-        return cls(crd, vel, mass, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence)
+    def from_initial(cls, crd, vel, mass, model, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence):
+        return cls(crd, vel, mass, model, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence)
 
 class PrintResults:
  
@@ -580,16 +602,21 @@ class PrintResults:
 
     def save_db(self, t, state):
         nstates = state.nstates
+        model = state.model
+        nmodes = len(state.mass)
         if isscalar(state.crd):
             natoms = int(1)
         else:
             natoms = len(state.crd)
         if state.method == "Surface_Hopping":
-            db = PySurfDB.generate_database("results.db", data=["crd","veloc","energy","time","ekin","epot","etot","fosc","currstate"], dimensions ={"natoms":natoms, "nstates":nstates})
+            if model:
+                db = PySurfDB.generate_database("results.db", data=["crd","veloc","energy","time","ekin","epot","etot","fosc","currstate"], dimensions ={"nmodes":nmodes, "nstates":nstates}, model = model)
+            else:
+                db = PySurfDB.generate_database("results.db", data=["crd","veloc","energy","time","ekin","epot","etot","fosc","currstate"], dimensions ={"natoms":natoms, "nstates":nstates}, model = model)
             db.set("currstate",state.instate)
             db.set("fosc",self.norm_coeff(state.ncoeff))
         if state.method == "Born_Oppenheimer":
-            db = PySurfDB.generate_database("results.db", data=["crd","veloc","energy","time","ekin","epot","etot"], dimensions ={"natoms":natoms, "nstates":nstates})
+            db = PySurfDB.generate_database("results.db", data=["crd","veloc","energy","time","ekin","epot","etot"], dimensions ={"natoms":natoms, "nstates":nstates}, model = model)
         db.set("crd",state.crd)
         db.set("veloc",state.vel)
         db.set("energy",state.ene)
