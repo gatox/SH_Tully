@@ -1,1 +1,5 @@
-
+In order to run a trajectory surface hopping using the Tully scheme, it must be istalled firts:
+1) PySurf
+2) Colt
+3) Qctools
+Clone "pysurf_plugins" folder in a home directory.
