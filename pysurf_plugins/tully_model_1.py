@@ -155,16 +155,6 @@ if __name__=="__main__":
 #    print(HO._di_gradient(request.crd))
 #    print(HO._n_coupling(request.crd))
 #    print(HO._a_coupling(request.crd))
-    
-#    a = SurfacePointProvider.from_questions(["energy","gradient","coupling"], 2, 1, config ="Tully1.in")
-#    result = a.request(1, ['energy', 'gradient', 'coupling']) 
-#    print(result['energy'])
-#    print(result['gradient'])
-#    print(result['n_coupling'])
-#    print(result['coupling'])
-#    b = result['coupling']
-#    print(np.diag([b[0,1],b[1,0]]))
-
     a = Tully_1.from_questions(config = "tully_1.ini")
     print("energy: ",a._energy(-10))
     print("gradient: ",a._gradient(-10))
