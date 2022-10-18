@@ -1,2 +1,2 @@
 # SH_Tully
-Implementation of trajectory surface hopping using velocity Verlet algorithm and Tully approach 
+We share our own implementation of the trajectory surface hopping method based on a modified Tully approach using the velocity Verlet algorithm
