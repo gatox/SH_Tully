@@ -6,8 +6,8 @@ import numpy as np
 #
 from jinja2 import Template
 #
-from pysurf.qctools import generate_filereader, Event
-from pysurf.qctools.events import join_events
+from qctools import generate_filereader, Event
+from qctools.events import join_events
 #
 from pysurf.spp.qm import AbinitioBase
 from pysurf.system import Molecule
@@ -135,7 +135,7 @@ NACouplingEx = Event('NACouplingEx',
 )
 
 NACouplingSFEx = Event('NACouplingSFEx',
-            'xgrep', {'keyword': 'SF-CIS derivative coupling without ETF',
+            'xgrep', {'keyword': 'SF-CIS derivative coupling with ETF',
                       'ilen': "natoms",
                       'ishift': 3,},
              settings = {"multi":True, "reset":True},
@@ -249,7 +249,7 @@ class UpdatableDict(MutableMapping):
 
 class QChem(AbinitioBase):
 
-    _questions = """
+    _user_input = """
     exe = qchem :: str 
     nthreads = 4 :: int
 #    remsection = :: literal
@@ -369,7 +369,7 @@ class QChem(AbinitioBase):
         #    self.settings[key] = value
 
     @classmethod
-    def from_config(cls, config, atomids, nstates):
+    def from_config(cls, config, atomids, nstates, nghost_states):
         return cls(config, atomids, nstates, config['chg'], config['mult'], config['exe'], config['nthreads'], config['couplings'], config['spin_flip'], config['basis'], config['method'])
 
     def get(self, request):

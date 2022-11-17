@@ -1,9 +1,11 @@
 import os
 import numpy as np
 #
-from pysurf.colt import Colt
-from pysurf.colt import from_commandline
+from colt import Colt
+from colt import from_commandline
 #
+#from pysurf import fs2au
+#from pysurf import Sampling
 from pysurf.utils.constants import fs2au
 from pysurf.sampling.sampling import Sampling
 

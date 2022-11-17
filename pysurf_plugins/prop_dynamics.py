@@ -1,11 +1,11 @@
 import numpy as np
 
 from pysurf.database import PySurfDB
-from pysurf.colt import Colt
+from colt import Colt
 
 class State(Colt):
 
-    _questions = """ 
+    _user_input = """ 
     # chosen parameters
     db_file = :: existing_file 
     t = 0.0 :: float
