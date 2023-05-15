@@ -4,8 +4,7 @@ This implementation works as a pluging of [PySurf](https://github.com/MFSJMenger
 ## Requirements
 Create a python enviroment (Python3.8+). Clone the [PySurf](https://github.com/MFSJMenger/pysurf) repository and its requirements. Clone the `pysurf_plugins` folder at home directory. 
 ## Settings
-Go to `pysurf/pusurf` folder. 
-
+Go to `pysurf/pusurf` folder. Open `__init__.py` file, add the following line: `home = os.path.expanduser("~")` and change the following line: `user_plugins = os.path.join(base, "plugins")` to `user_plugins = os.path.join(home, "pysurf_plugins")`. 
 ## References
 [1] Tully, J. C. Molecular dynamics with electronic transitions. J. Chem. Phys. 1990, 93,
 1061–1071.
