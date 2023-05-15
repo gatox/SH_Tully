@@ -1,9 +1,9 @@
 # SH_Tully
-We share our own implementation of the trajectory surface hopping method based on Tully's approach using the velocity Verlet algorithm. This approach is often called fewest switches surface hopping (FSSH) because distributes the trajectories between the electronic states according to the computed state probabilities using a minimum number of hops[1]
+We share our own implementation of the trajectory surface hopping method based on Tully's approach using the velocity Verlet algorithm. This approach is often called fewest switches surface hopping (FSSH) because distributes the trajectories between the electronic states according to the computed state probabilities using a minimum number of hops[1].
 This implementation works as a pluging of [PySurf](https://github.com/MFSJMenger/pysurf); a software framework for data science applications in computational chemistry[2].
 ## Requirements
+Create a python enviroment (Python3.8+). Clone the [PySurf](https://github.com/MFSJMenger/pysurf) repository and its requirements. Clone the "pysurf_plugins" folder at home directory.  
 
-[PySurf](https://github.com/MFSJMenger/pysurf)
 ## References
 [1] Tully, J. C. Molecular dynamics with electronic transitions. J. Chem. Phys. 1990, 93,
 1061–1071.
