@@ -8,6 +8,8 @@ class SubmitTrajectories:
         for line in prop:
             if "model = Tully_1" in line:
                 model = str(line.split()[2])
+            elif "model = LVC" in line:
+                model = str(line.split()[2])
             else:
                 model = "molecule"
         return model 
@@ -22,7 +24,7 @@ class SubmitTrajectories:
     def read_prop(self):
         prop = open("prop.inp", 'r+')
         for line in prop:
-            if "method" in line:
+            if "method =" in line:
                 method = str(line.split()[2])
         return method 
 
@@ -37,12 +39,21 @@ class SubmitTrajectories:
                     if use_db == "yes":
                         run(['sbatch db_lz_run.sh'], cwd=subfolder, check=True, shell=True)
                     else:
-                        run(['sbatch lz_run.sh'], cwd=subfolder, check=True, shell=True)
+                        run(['sbatch lz_run_om.sh'], cwd=subfolder, check=True, shell=True)
+                        #run(['sbatch lz_run.sh'], cwd=subfolder, check=True, shell=True)
                 elif method == "Surface_Hopping":
                     if model == "Tully_1":
                         run(['sbatch model_fssh_run.sh'], cwd=subfolder, check=True, shell=True)
+                    elif model == "LVC":
+                        run(['sbatch lvc_fssh_run.sh'], cwd=subfolder, check=True, shell=True)
                     else:
-                        run(['sbatch fssh_run.sh'], cwd=subfolder, check=True, shell=True)
+                        #run(['sbatch open_molcas_compAMDlong.sh'], cwd=subfolder, check=True, shell=True)
+                        #run(['sbatch open_molcas_p.sh'], cwd=subfolder, check=True, shell=True)
+                        #run(['sbatch open_molcas_emiel.sh'], cwd=subfolder, check=True, shell=True)
+                        run(['sbatch open_molcas.sh'], cwd=subfolder, check=True, shell=True)
+                        #run(['sbatch bagel.sh'], cwd=subfolder, check=True, shell=True)
+                        #run(['sbatch lvc_fssh_run.sh'], cwd=subfolder, check=True, shell=True)
+                        #run(['sbatch fssh_run.sh'], cwd=subfolder, check=True, shell=True)
             except KeyboardInterrupt or CalledProcessError:
                 break
             print("Submitting", subfolder)            

@@ -16,11 +16,11 @@ class State(Colt):
     nstates = 2 :: int
     states = 0 1 :: ilist
     ncoeff = 0.0 1.0 :: flist
-    prob = tully :: str :: tully, diagonal     
+    prob = tully :: str :: tully, diagonal, lz    
     rescale_vel = momentum :: str :: momentum, nacs 
-    coupling = nacs :: str :: nacs, wf_overlap
+    coupling = nacs :: str :: nacs, wf_overlap, non_coup 
     method = Surface_Hopping :: str :: Surface_Hopping, Born_Oppenheimer  
-    decoherence = not :: str :: not, yes
+    decoherence = EDC :: str :: EDC, IDC_A, IDC_S, No_DC 
     """
 
     def __init__(self, crd, vel, mass, model, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence, atomids):
@@ -47,6 +47,9 @@ class State(Colt):
             raise SystemExit("Wrong coupling method or wrong rescaling velocity approach")
         self.method = method
         self.decoherence = decoherence
+        self.e_curr = None
+        self.e_prev_step = None
+        self.e_two_prev_steps = None
         self.ekin = 0
         self.epot = 0
         self.nac = {}
@@ -92,8 +95,8 @@ class State(Colt):
         return crd, vel, mass, atomids, model
 
     @classmethod
-    def from_initial(cls, crd, vel, mass, model, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method):
-        return cls(crd, vel, mass, model, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence)
+    def from_initial(cls, crd, vel, mass, model, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence, atomids):
+        return cls(crd, vel, mass, model, t, dt, mdsteps, instate, nstates, states, ncoeff, prob, rescale_vel, coupling, method, decoherence, atomids)
 
 if __name__=="__main__":
     State.from_questions(config = "prop.inp")
