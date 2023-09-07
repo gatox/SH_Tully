@@ -614,8 +614,9 @@ class QChem(AbinitioBase):
             nac_ex = out['NACouplingEx']
         nac_t = nac_g + nac_ex 
         nacs = {}
+        leng = int(self.nstates*(self.nstates-1)/2)
         if self.nstates > 2:
-            for i in range(self.nstates):
+            for i in range(leng):
                 nacs.update({(out['nacs'][i][0],out['nacs'][i][1]):np.array(nac_t[i])})
                 nacs.update({(out['nacs'][i][1],out['nacs'][i][0]):-np.array(nac_t[i])})
             request.set('nacs', nacs)
@@ -643,8 +644,9 @@ class QChem(AbinitioBase):
                 if i < j:
                     sf_range.append([i,j])
         nacs = {}
+        leng = int(self.nstates*(self.nstates-1)/2)
         if self.nstates > 2:
-            for i in range(self.nstates):
+            for i in range(leng):
                 nacs.update({(sf_range[i][0],sf_range[i][1]):np.array(nac_sfex[i])})
                 nacs.update({(sf_range[i][1],sf_range[i][0]):-np.array(nac_sfex[i])})
             request.set('nacs', nacs)
@@ -672,8 +674,9 @@ class QChem(AbinitioBase):
                 if i < j:
                     eom_range.append([i,j])
         nacs = {}
+        leng = int(self.nstates*(self.nstates-1)/2)
         if self.nstates > 2:
-            for i in range(self.nstates):
+            for i in range(leng):
                 nacs.update({(eom_range[i][0],eom_range[i][1]):np.array(nac[i])})
                 nacs.update({(eom_range[i][1],eom_range[i][0]):-np.array(nac[i])})
             request.set('nacs', nacs)
@@ -740,32 +743,32 @@ class QChem(AbinitioBase):
 
 
 
-if __name__=='__main__':
-    atomids = ["Cl","H"]
-    molecule = Molecule(atomids, None)
-    #print(molecule.natoms)
-    #out = QChemReader("qchem.out",["nacs","NACouplingGEx","NACouplingEx"],{"natoms":2}) 
-    #out = QChemReader("sf_1_3_4_nac_HCL.out",["nacs","NACouplingSFEx"],{"natoms":2}) 
-    #out = QChemReader("qchem.out",["NACouplingGEx","NACouplingEx"],{"natoms":2}) 
-    #out = QChemReader("sf_force_HCl.out",['Sf_ExcitedState'],{'natoms': molecule.natoms}) 
-    out = QChemReader("nac_he3.out",['NACouplingEOMCCSD'],{'natoms': molecule.natoms}) 
-    #out = QChemReader("force_HCl.out",['SCFEnergy', 'ExcitedStateInfo'],{'natoms': molecule.natoms}) 
-    #out = QChemReader("force_HCl.out",["CisGradient"],{'natoms': 2}) 
-    #out = QChem.from_questions(atomids, nstates = 5, config = "test_1.inp")
-    #out.submit_save("water_8.inp")
-    #out = QChemReader("sf_force_HCl.out",['SCFEnergy', 'ExcitedStateInfo'],{'natoms': molecule.natoms}) 
-    #out = QChemReader("sf_force_HCl.out",["ExcitedState"],{'natoms': molecule.natoms}) 
-    #out = QChemReader("sf_force_HCl.out",["ExcitedStateInfo"],{'natoms': molecule.natoms}) 
-    #print(out.basis)
-    #print(out.spin_flip)
-    #print(out['ExcitedState'])
-    #print(out['SF_S_2'])
-    #print(out['nacs'])
-    #print(out['NACouplingEx'])
-    #print(out['NACouplingGEx'])
-    print(out['NACouplingEOMCCSD'])
-    #res = out.ov_matrix()
-    #print(res)
-    #print(out["nacs"],out["NACouplingGEx"][0],out["NACouplingEx"][2])
-    #print(out["NACouplingGEx"],out["NACouplingEx"])
-    #print(out["CisGradient"])
+#if __name__=='__main__':
+#    atomids = ["Cl","H"]
+#    molecule = Molecule(atomids, None)
+#    #print(molecule.natoms)
+#    #out = QChemReader("qchem.out",["nacs","NACouplingGEx","NACouplingEx"],{"natoms":2}) 
+#    #out = QChemReader("sf_1_3_4_nac_HCL.out",["nacs","NACouplingSFEx"],{"natoms":2}) 
+#    #out = QChemReader("qchem.out",["NACouplingGEx","NACouplingEx"],{"natoms":2}) 
+#    #out = QChemReader("sf_force_HCl.out",['Sf_ExcitedState'],{'natoms': molecule.natoms}) 
+#    out = QChemReader("nac_he3.out",['NACouplingEOMCCSD'],{'natoms': molecule.natoms}) 
+#    #out = QChemReader("force_HCl.out",['SCFEnergy', 'ExcitedStateInfo'],{'natoms': molecule.natoms}) 
+#    #out = QChemReader("force_HCl.out",["CisGradient"],{'natoms': 2}) 
+#    #out = QChem.from_questions(atomids, nstates = 5, config = "test_1.inp")
+#    #out.submit_save("water_8.inp")
+#    #out = QChemReader("sf_force_HCl.out",['SCFEnergy', 'ExcitedStateInfo'],{'natoms': molecule.natoms}) 
+#    #out = QChemReader("sf_force_HCl.out",["ExcitedState"],{'natoms': molecule.natoms}) 
+#    #out = QChemReader("sf_force_HCl.out",["ExcitedStateInfo"],{'natoms': molecule.natoms}) 
+#    #print(out.basis)
+#    #print(out.spin_flip)
+#    #print(out['ExcitedState'])
+#    #print(out['SF_S_2'])
+#    #print(out['nacs'])
+#    #print(out['NACouplingEx'])
+#    #print(out['NACouplingGEx'])
+#    print(out['NACouplingEOMCCSD'])
+#    #res = out.ov_matrix()
+#    #print(res)
+#    #print(out["nacs"],out["NACouplingGEx"][0],out["NACouplingEx"][2])
+#    #print(out["NACouplingGEx"],out["NACouplingEx"])
+#    #print(out["CisGradient"])
