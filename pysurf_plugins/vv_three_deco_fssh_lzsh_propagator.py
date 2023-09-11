@@ -322,13 +322,13 @@ class Propagator:
         elif state.decoherence == "EDC":
             self.energy_based_decoherence_correction(state, ncoeff)
         elif state.decoherence == "IDC_A":
-            if hop =="not" and att =="yes":
-                self.instantaneous_decoherence_correction(ncoeff, state)
+            if att =="yes":
+                self.instantaneous_decoherence_correction(state, ncoeff)
             else:
                 self.no_decoherence_correction(state, ncoeff)
         elif state.decoherence == "IDC_S":
-            if hop =="yes" and succ =="yes":
-                self.instantaneous_decoherence_correction(ncoeff, state)
+            if succ =="yes":
+                self.instantaneous_decoherence_correction(state, ncoeff)
             else:
                 self.no_decoherence_correction(state, ncoeff)
         else:
