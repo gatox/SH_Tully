@@ -22,7 +22,7 @@ class Population:
         self.skip = skip
         self.ev = 27.211324570273 
         self.fs = 0.02418884254
-        self.aa = 0.529177208 
+        self.aa = 0.5291772105638411 
         self.fs_rcParams = '20'
         self.t_0 = 0
         self.t_max = 200 #fs
@@ -41,8 +41,7 @@ class Population:
             trajs = []
             read = open("trajectories_ok_list", 'r+') 
             return [line.split("/")[1] for line in read]
-        else:
-            return None
+        return None
 
     def dis_dimer(self, m, a, b):
         return (np.sqrt(np.sum((np.array(m[int(a)])-np.array(m[int(b)]))**2)))*self.aa
@@ -118,9 +117,7 @@ class Population:
                 nstates = int(line.split()[2])
             #LZ
             if "states" in line and not ("nstates" or "nghost_states") in line and tully is not None:
-                states = []
-                for i in range(nstates):
-                    states.append(int(line.split()[2+i]))
+                states = [int(line.split()[2+i]) for i in range(nstates)]
             elif "method =" in line:
                 method = str(line.split()[2])
                 if method == "Surface_Hopping":
@@ -170,24 +167,24 @@ class Population:
                     var = np.array(db["fosc"][t], dtype=float)
                     matrix_0[traj][t] = var[0]
                     matrix_1[traj][t] = var[1]
-               #     etot = np.array(db["etot"][t])
-               #     ene = np.array(db["energy"][t])
-               #     if t==0:
-               #         self.ini_etot = etot[0] 
-               #     matrix_2[traj][t] = pop[0]
-               #     matrix_3[traj][t] = self.dihedral(np.array(db["crd"][t], dtype=float),3,0,1,4) #H4-C1-N2-H5
-               #     matrix_4[traj][t] = self.dihedral(np.array(db["crd"][t], dtype=float),2,0,1,4) #H3-C1-N2-H5
-               #     matrix_5[traj][t] = (etot[0]-self.ini_etot)*self.ev
-               #     matrix_6[traj][t] = self.dis_dimer(np.array(db["crd"][t], dtype=float),0,1) #C1-N2  
-               #     matrix_7[traj][t] = self.dis_dimer(np.array(db["crd"][t], dtype=float),1,4) #N2-H5  
-               #     matrix_8[traj][t] = self.dis_dimer(np.array(db["crd"][t], dtype=float),0,3) #C1-H4  
-               #     matrix_9[traj][t] = self.dis_dimer(np.array(db["crd"][t], dtype=float),0,2) #C1-H3  
-               #     matrix_10[traj][t] = self.angle(np.array(db["crd"][t], dtype=float),0,1,4) #C1-N2-H5  
-               #     matrix_11[traj][t] = self.pyramidalization_angle(np.array(db["crd"][t], dtype=float),3,2,1,0) #H4-H3-N2-C1  
-               #     matrix_12[traj][t] = (ene[1]-ene[0])*self.ev #Energy gap between S_1 and S_0 
-               #     matrix_13[traj][t] = ene[0]
-               #     matrix_14[traj][t] = (ene[1]+ene[0])/2 #Average between (S_1 and S_0)
-               # matrix_14[traj][:]=(matrix_14[traj][:]-matrix_13[traj][:].min())*self.ev # - E_S_0_min
+                    etot = np.array(db["etot"][t])
+                    ene = np.array(db["energy"][t])
+                    if t==0:
+                        self.ini_etot = etot[0] 
+                    matrix_2[traj][t] = pop[0]
+                    matrix_3[traj][t] = self.dihedral(np.array(db["crd"][t], dtype=float),3,0,1,4) #H4-C1-N2-H5
+                    matrix_4[traj][t] = self.dihedral(np.array(db["crd"][t], dtype=float),2,0,1,4) #H3-C1-N2-H5
+                    matrix_5[traj][t] = (etot[0]-self.ini_etot)*self.ev
+                    matrix_6[traj][t] = self.dis_dimer(np.array(db["crd"][t], dtype=float),0,1) #C1-N2  
+                    matrix_7[traj][t] = self.dis_dimer(np.array(db["crd"][t], dtype=float),1,4) #N2-H5  
+                    matrix_8[traj][t] = self.dis_dimer(np.array(db["crd"][t], dtype=float),0,3) #C1-H4  
+                    matrix_9[traj][t] = self.dis_dimer(np.array(db["crd"][t], dtype=float),0,2) #C1-H3  
+                    matrix_10[traj][t] = self.angle(np.array(db["crd"][t], dtype=float),0,1,4) #C1-N2-H5  
+                    matrix_11[traj][t] = self.pyramidalization_angle(np.array(db["crd"][t], dtype=float),3,2,1,0) #H4-H3-N2-C1  
+                    matrix_12[traj][t] = (ene[1]-ene[0])*self.ev #Energy gap between S_1 and S_0 
+                    matrix_13[traj][t] = ene[0]
+                    matrix_14[traj][t] = (ene[1]+ene[0])/2 #Average between (S_1 and S_0)
+                matrix_14[traj][:]=(matrix_14[traj][:]-matrix_13[traj][:].min())*self.ev # - E_S_0_min
                 traj +=1
         #        #acstate.append(np.array(db["currstate"]))
         #        acstate.append(np.array(db["fosc"]))
@@ -195,10 +192,12 @@ class Population:
         #for traj, sta in enumerate(acstate):
         #    for t in range(len(acstate[traj])):
         #        matrix_1[traj,t] = np.array(acstate)[traj][t]
-        var = namedtuple("var", "p_c0 p_c1") 
-        return var(matrix_0,matrix_1)
-      #  var = namedtuple("var", "p_c0 p_c1 pop dihe_3014 dihe_2014 etot dis_r12 dis_r25 dis_r14 dis_r13 angle_014 pyr_3210 e_gap ave") 
-      #  return var(matrix_0, matrix_1, matrix_2, matrix_3, matrix_4, matrix_5, matrix_6, matrix_7, matrix_8, matrix_9, matrix_10, matrix_11, matrix_12, matrix_14)
+        #var = namedtuple("var", "p_c0 p_c1") 
+        #return var(matrix_0,matrix_1)
+        #var = namedtuple("var", "p_c0 p_c1 pop") 
+        #return var(matrix_0,matrix_1,matrix_2)
+        var = namedtuple("var", "p_c0 p_c1 pop dihe_3014 dihe_2014 etot dis_r12 dis_r25 dis_r14 dis_r13 angle_014 pyr_3210 e_gap ave") 
+        return var(matrix_0, matrix_1, matrix_2, matrix_3, matrix_4, matrix_5, matrix_6, matrix_7, matrix_8, matrix_9, matrix_10, matrix_11, matrix_12, matrix_14)
 
     def plot_population_compare(self, time, popu):
         prop = self.read_prop()
@@ -436,9 +435,7 @@ class Population:
         var = var.T
         mdsteps, trajs = var.shape
         print(mdsteps, trajs)
-        time = []
-        for m in range(mdsteps):
-            time.append(m*dt*self.fs)
+        time = [m*dt*self.fs for m in range(mdsteps)]
         return time, var
 
     #def get_all_var(self):
@@ -465,7 +462,7 @@ class Population:
         fig, ax = plt.subplots()
         for i in range(nstates):
             plt.plot(time,np.array(population)[:,i], label = '$S_%i$' %i)
-        plt.xlim([self.t_0, self.t_max])
+        #plt.xlim([self.t_0, self.t_max])
         plt.xticks(fontsize=15)
         plt.yticks(fontsize=15)
         plt.ylim([-0.05, 1.05])
@@ -558,8 +555,7 @@ class Population:
         myBool = True
         if comp > lower and comp < upper:
             return myBool
-        else:
-            return not myBool
+        return not myBool
 
     def con_int_two_angles(self, angle_1, angle_2):
         angle_alpha = read_csv(angle_1)       
@@ -1311,140 +1307,6 @@ class Population:
         plt.close()
 
 
-
-    #def plot_histogram_hops(self, n_bins=8):
-    #    prop = self.read_prop()
-    #    trajs = prop.trajs
-    #    mdsteps = prop.mdsteps
-    #    nstates = prop.nstates
-    #    pyr_name = "pyr_3210.dat"
-    #    dihe_name = "dihe_2014.dat"
-    #    pop_name = "pop.dat"
-    #    pop = read_csv(pop_name)
-    #    time = pop['time']
-    #    time = time.to_numpy()
-    #    hop = pop.to_numpy()[:,1:] # removing time column
-    #    ci_alpha, ci_phi = self.con_int_two_angles("angle_014.dat", "dihe_2014.dat")
-    #    angle_p = self.no_time("dihe_3014.dat") 
-    #    pyr = self.no_time(pyr_name) 
-    #    plt.rcParams['font.size'] = self.fs_rcParams
-    #    hop_10 = []
-    #    hop_01 = []
-    #    mecp_10 = []
-    #    mecp_01 = []
-    #    for j in range(1,mdsteps):   #time_steps 
-    #        for i in range(trajs):          #trajectories
-    #            x = time[j]
-    #            pyram = pyr[j,i]
-    #            y_dihe_1 = angle_p[j,i] 
-    #            alpha = ci_alpha[j,i]
-    #            phi = ci_phi[j,i]
-    #            if hop[j-1,i]==1 and hop[j,i]==0:
-    #                if ((self.compare(alpha,self.ci[0],self.err) and self.compare(np.abs(phi),self.ci[1],self.err)) or 
-    #                    (self.compare(alpha,self.ci[0],self.err) and self.compare(np.abs(y_dihe_1),self.ci[1],self.err))): 
-    #                    mecp_10.append(x)
-    #                else:
-    #                    hop_10.append(x)
-    #            elif hop[j-1,i]==0 and hop[j,i]==1:
-    #                if ((self.compare(alpha,self.ci[0],self.err) and self.compare(np.abs(phi),self.ci[1],self.err)) or 
-    #                    (self.compare(alpha,self.ci[0],self.err) and self.compare(np.abs(y_dihe_1),self.ci[1],self.err))): 
-    #                    mecp_01.append(x)
-    #                else:
-    #                    hop_01.append(x)
-    #    plt.xlim([self.t_0, self.t_max])
-    #    #plt.ylim([-180, 180])
-    #    #handles =[hop_10,hop_01,mecp_10,mecp_01]
-    #    bins = [x for x in range(self.t_0, self.t_max+1,int(self.t_max/n_bins))]
-    #    labels = [r"$S_1$ $\rightarrow$ $S_0$",r"$S_0$ $\rightarrow$ $S_1$"]
-    #    n_plt, bins_plt, patches = plt.hist([hop_10,hop_01], bins = bins, color = ["green","red"], label=labels)
-    #    plt.ylabel('Number of Hops', fontweight = 'bold', fontsize = self.fs_ylabel)
-    #    plt.xlabel('Time (fs)', fontweight = 'bold', fontsize = self.fs_xlabel)
-    #    if self.legend == "yes":
-    #        plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.2), prop={'size': 12}, ncol=2)
-    #    else:
-    #        plt.legend().remove()
-    #    if self.label =="fssh":
-    #        plt.savefig("fssh_number_of_hops_time.pdf", bbox_inches='tight')
-    #    elif self.label =="lz":
-    #        plt.savefig("lz_number_of_hops_time.pdf", bbox_inches='tight')
-    #    plt.close()
-    #    print("Histogram Information:", n_plt, bins_plt, patches)
-
-    #def plot_dihedral_hops_time(self):
-    #    prop = self.read_prop()
-    #    nstates = prop.nstates
-    #    var = self.read_db()   
-    #    time_dihe, dihe_2357 = self.get_all_var(var.dihe_2357)
-    #    time_12, dis_12 = self.get_all_var(var.dis_r12)
-    #    time_23, dis_23 = self.get_all_var(var.dis_r23)
-    #    time_35, dis_35 = self.get_all_var(var.dis_r35)
-    #    time_57, dis_57 = self.get_all_var(var.dis_r57)
-    #    time_70, dis_70 = self.get_all_var(var.dis_r70)
-    #    time_01, dis_01 = self.get_all_var(var.dis_r01)
-    #    time, hop = self.get_all_var(var.popu)
-    #    row, col = dis_12.shape
-    #    ep_10 = 0.05
-    #    ep_12 = 0.08
-    #    ep_12_pri = 0.05
-    #    mecp_10 = []
-    #    mecp_12 = []
-    #    mecp_12_pri = []
-    #    for i in range(col):         #trajectories
-    #        for j in range(row-1):   #time_steps 
-    #            x = np.array(time_12)[j]
-    #            y_dihe_1 = np.array(dihe_2357)[j,i]
-    #            y_12 = np.array(dis_12)[j,i]
-    #            y_23 = np.array(dis_23)[j,i]
-    #            y_35 = np.array(dis_35)[j,i]
-    #            y_57 = np.array(dis_57)[j,i]
-    #            y_70 = np.array(dis_70)[j,i]
-    #            y_01 = np.array(dis_01)[j,i]
-    #            if hop[j,i]==1 and hop[j+1,i]==0:
-    #                if (self.compare(y_12, 2.14, 0.04) and self.compare(y_23, 1.41, ep_10) and 
-    #                    self.compare(y_35, 1.40, ep_10) and self.compare(y_57, 1.39, ep_10) and     
-    #                        self.compare(y_70, 1.42, ep_10) and self.compare(y_01, 1.39, ep_10)):
-    #                    print("S1-S0",x,y_12,y_23,y_35,y_57,y_70,y_01)
-    #                    mecp_10.append([x,y_dihe_1])
-    #                else:
-    #                    plt.scatter(x,y_dihe_1,color='green', marker='o',s=35)
-    #            elif hop[j,i]==2 and hop[j+1,i]==1:
-    #                plt.scatter(x,y_dihe_1,color='gold', marker='o',s=35)
-    #            elif hop[j,i]==0 and hop[j+1,i]==1:
-    #                plt.scatter(x,y_dihe_1,color='red', marker='o',s=35)
-    #            elif hop[j,i]==1 and hop[j+1,i]==2:
-    #                if (self.compare(y_12, 2.03, 0.04) and self.compare(y_23, 1.42, ep_12) and 
-    #                    self.compare(y_35, 1.45, ep_12) and self.compare(y_57, 1.37, ep_12) and 
-    #                        self.compare(y_70, 1.45, ep_12) and self.compare(y_01, 1.42, ep_12)):
-    #                    print("S1-S2",x,y_dihe_1,y_23,y_35,y_57,y_70,y_01)
-    #                    mecp_12.append([x,y_dihe_1])
-    #                elif (self.compare(y_12, 2.36, 0.04) and self.compare(y_23, 1.41, ep_12_pri) and 
-    #                    self.compare(y_35, 1.39, ep_12_pri) and self.compare(y_57, 1.42, ep_12_pri) and 
-    #                        self.compare(y_70, 1.39, ep_12_pri) and self.compare(y_01, 1.41, ep_12_pri)):
-    #                    print("S1-S2_pri",x,y_dihe_1,y_23,y_35,y_57,y_70,y_01)
-    #                    mecp_12_pri.append([x,y_dihe_1])
-    #                else:
-    #                    plt.scatter(x,y_dihe_1,color='blue', marker='o',s=35)
-    #    for i in mecp_10:
-    #        plt.scatter(i[0],i[1],color='green', marker='*',s=250, edgecolors='black') 
-    #    for i in mecp_12:
-    #        plt.scatter(i[0],i[1],color='blue', marker='*',s=250, edgecolors='black')
-    #    for i in mecp_12_pri:
-    #        plt.scatter(i[0],i[1],color='pink', marker='*',s=250, edgecolors='black')
-    #    plt.xlim([0, 350])
-    #    plt.ylim([-62, 82])
-    #    plt.xlabel('Time (fs)', fontweight = 'bold', fontsize = 16)
-    #    plt.ylabel('$\mathbf{\sphericalangle C_1C_2C_3C_4 (degrees)}$', fontsize = 16) 
-    #    plt.scatter(-5,-5,color='green', marker='o',s=35, label = r"$S_1$ $\rightarrow$ $S_0$")
-    #    plt.scatter(-5,-5,color='gold', marker='o',s=35, label = r"$S_2$ $\rightarrow$ $S_1$")
-    #    plt.scatter(-5,-5,color='red', marker='o',s=35, label = r"$S_0$ $\rightarrow$ $S_1$")
-    #    plt.scatter(-5,-5,color='blue', marker='o',s=35, label = r"$S_1$ $\rightarrow$ $S_2$")
-    #    plt.scatter(-5,-5,color='green', marker='*',s=250, edgecolors='black', label = r"MECP $S_1/S_0$")
-    #    plt.scatter(-5,-5,color='blue', marker='*',s=250, edgecolors='black', label = r"MECP $S_1/S_2$")
-    #    plt.scatter(-5,-5,color='pink', marker='*',s=250, edgecolors='black', label = r"MECP$^{\prime}$ $S_1/S_2$")
-    #    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    #    plt.savefig("Dihe_2357_hops_time.pdf", bbox_inches='tight')
-    #    plt.close()
-
     def plot_dihedral_dist_hops(self):
         prop = self.read_prop()
         nstates = prop.nstates
@@ -1674,8 +1536,8 @@ class Population:
 
     def write_csvs(self):
         var  = self.read_db()
-        #for value in var._fields:
-        for value in ["p_c0", "p_c1"]:
+        for value in var._fields:
+        #for value in ["p_c0", "p_c1", "pop"]:
             print("Writhing csv files:", value)
             t, m = self.get_all_var(getattr(var, value))
             dct = {'time': t}
@@ -1696,8 +1558,8 @@ class Population:
 if __name__=="__main__":
     skip = sys.argv[1]
     popu = Population(skip)
-    popu.write_csvs()
-    popu.plot_population_pop_c()
+    #popu.write_csvs()
+    #popu.plot_population_pop_c()
     #popu.plot_population_adi()
     #popu.plot_dihedral_hops_time()
     #popu.plot_ene_angle_hops()
@@ -1709,7 +1571,7 @@ if __name__=="__main__":
     #popu.plot_dihedral_angle_map_hops()
     #popu.plot_energies_diff_time()
     #popu.plot_population_adi_fitted()
-    #popu.get_qy_popu()
+    popu.get_qy_popu()
     #popu.plot_angle_dihedral_hops()
     #print(popu.get_all_var())
 
