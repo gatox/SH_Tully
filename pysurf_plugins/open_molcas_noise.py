@@ -409,8 +409,7 @@ class OpenMolcas(AbinitioBase):
             noise = np.random.normal(self.noise_mean, self.noise_sd, size = x.shape)
             x_noisy = x + noise
             return x_noisy 
-        else:
-            return x 
+        return x 
 
     def _read_energies(self, output, key):
         """Load keywords in memory of a hdf5 file specified by filename"""
@@ -514,8 +513,7 @@ class OpenMolcas(AbinitioBase):
         if isinstance(value, list):
             y = ", ".join( repr(e) for e in value)
             return y
-        else:
-            return value
+        return value
 
     def _write_input(self, filename, remsection, rassection, gradsection):
         """write input file for open_molcas"""

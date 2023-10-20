@@ -495,8 +495,7 @@ class OpenMolcas(AbinitioBase):
         if isinstance(value, list):
             y = ", ".join( repr(e) for e in value)
             return y
-        else:
-            return value
+        return value
 
     def _write_input(self, filename, remsection, rassection, gradsection):
         """write input file for open_molcas"""
