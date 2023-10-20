@@ -137,7 +137,7 @@ class Propagator:
             for i in range(self.nstates):
                 g_diag.update({i:dot(u.T.conj()[i,:],u[:,i]).real*g_mch[i]})
             return g_diag
-        elif self.prob_name == "tully" or self.prob_name == "lz":
+        elif self.prob_name in  ("tully", "lz"):
             return g_mch
 
     def mch_propagator(self, h_mch, vk, dt):
@@ -354,12 +354,12 @@ class RescaleVelocity:
         self.mass = state.mass
         self.state_old = state.instate
         self.ene_new = ene_cou_grad.ene
-        if self.rescale_vel == "nacs" and self.coupling == "nacs":
+        if self.rescale_vel == "nacs" ==  self.coupling:
             self.nac_new = ene_cou_grad.nac
             self.nac_old = state.nac
 
     def direction(self, vel, state_new):
-        if self.rescale_vel == "nacs" and self.coupling == "nacs":
+        if self.rescale_vel == "nacs" ==  self.coupling:
             return (0.5)*(self.nac_old[state_new,self.state_old] + self.nac_new[state_new,self.state_old])
         elif self.rescale_vel == "momentum":
             p = zeros(vel.shape)
@@ -374,8 +374,7 @@ class RescaleVelocity:
     def beta_ji(self, vel, direct):
         if isscalar(vel):
             return vel*direct
-        else:
-            return dot(vel.flatten(),direct.flatten())
+        return dot(vel.flatten(),direct.flatten())
     
     def alpha_ji(self, direct):
         if isscalar(self.mass):
@@ -732,7 +731,7 @@ class PrintResults:
         nmodes = len(state.mass)
         prob = state.prob
         if isscalar(state.crd):
-            natoms = int(1)
+            natoms = 1
         else:
             natoms = len(state.crd)
         if state.method == "Surface_Hopping" and prob == "tully":
