@@ -1,6 +1,5 @@
 import numpy as np
-#
-#from colt import Colt
+
 from saoovqe import SAOOVQE
 from pysurf.spp.qm import AbinitioBase
 from jinja2 import Template #build templates
