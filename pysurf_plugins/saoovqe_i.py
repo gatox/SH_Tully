@@ -2,10 +2,10 @@ import numpy as np
 
 from saoovqe import SAOOVQE
 from pysurf.spp.qm import AbinitioBase
-from jinja2 import Template #build templates
+from jinja2 import Template  # build templates
 from pysurf.system import Molecule
 
-#geometry in units bohr
+# geometry in units bohr
 tpl = Template("""
 units    bohr
  {% for atomid, crd in mol %} 
@@ -14,6 +14,23 @@ symmetry c1
 nocom
 noreorient 
 """)
+
+
+def ovlp_half(overlap):
+    """Convert overlap matrix to S^1/2"""
+    # Calculate the square root of the overlap matrix
+    S_eigval, S_eigvec = np.linalg.eigh(overlap)
+    S_half = S_eigvec @ np.diag((S_eigval) ** (1.0 / 2.0)) @ S_eigvec.T
+    return S_half
+
+
+def ovlp_min_half(overlap):
+    """Convert overlap matrix to S^1/2"""
+    # Calculate minus the square root of the overlap matrix
+    S_eigval, S_eigvec = np.linalg.eigh(overlap)
+    S_half = S_eigvec @ np.diag((S_eigval) ** (-1.0 / 2.0)) @ S_eigvec.T
+    return S_half
+
 
 class INTSAOOVQE(AbinitioBase):
     """ Interface for the SAOOVQE code, which is free available 
@@ -34,21 +51,20 @@ class INTSAOOVQE(AbinitioBase):
     virtual_indices = 9, 43 :: ilist 
     do_oo_process = True :: str
     """
-    
+
     tpl = tpl
 
     # implemented has to be overwritten by the individual classes for the methods
     implemented = ['energy', 'gradient', 'nacs']
 
-
     def __init__(self, config, atomids, nstates, basis, nelec_active, frozen_indices, active_indices, virtual_indices, do_oo_process):
-        self.molecule = Molecule(atomids, None) 
+        self.molecule = Molecule(atomids, None)
         self.natoms = len(atomids)
         self.nstates = nstates
         self.basis = basis
         self.nelec_active = nelec_active
         self.frozen_indices = [i for i in range(frozen_indices)]
-        self.active_indices = [i for i in range(active_indices[0], active_indices[1])] 
+        self.active_indices = [i for i in range(active_indices[0], active_indices[1])]
         self.virtual_indices = [i for i in range(virtual_indices[0], virtual_indices[1])]
         self.num_qubits = 2 * len(active_indices)
         self.do_oo_process = do_oo_process
@@ -58,15 +74,13 @@ class INTSAOOVQE(AbinitioBase):
         self.delta = 1e-5
         self.tell_me = True
         self.ucc_ansatz = ["fermionic_SAAD", "fast"][1]
-        self.bohr = 0.5291772105638411 
+        self.bohr = 0.5291772105638411
         self.icall = 0
 
-        
     @classmethod
     def from_config(cls, config, atomids, nstates, nghost_states):
         return cls(config, atomids, nstates, config['basis'], config['nelec_active'], config['frozen_indices'], config['active_indices'], config['virtual_indices'], config['do_oo_process'])
 
-    
     def get(self, request):
         if self.icall == 0:
             self.read_mos = False
@@ -77,57 +91,63 @@ class INTSAOOVQE(AbinitioBase):
         self.molecule.crd = request.crd
         if 'gradient' in request:
             self._out_gradient(request)
-        if 'energy'  in request:
+        if 'energy' in request:
             self._out_energy(request)
-        if 'nacs'  in request:
+        if 'nacs' in request:
             self._out_nacs(request)
         return request
 
     def _do_saoovqe_ene_grad_nacs(self, state):
         string_geo = self.tpl.render(mol=self.molecule)
         saoovqe_class = SAOOVQE(string_geo,
-                          self.basis,
-                          self.nelec_active,
-                          self.frozen_indices,
-                          self.active_indices,
-                          self.virtual_indices,
-                          tell_me=self.tell_me,
-                          w_a=self.w_a,
-                          w_b=self.w_b,
-                          delta=self.delta,
-                          print_timings=False, # Use this if you want to compute all the timings...
-                          do_oo_process=self.do_oo_process,
-                          ucc_ansatz=self.ucc_ansatz)
+                                self.basis,
+                                self.nelec_active,
+                                self.frozen_indices,
+                                self.active_indices,
+                                self.virtual_indices,
+                                tell_me=self.tell_me,
+                                w_a=self.w_a,
+                                w_b=self.w_b,
+                                delta=self.delta,
+                                # Use this if you want to compute all the timings...
+                                print_timings=False,
+                                do_oo_process=self.do_oo_process,
+                                ucc_ansatz=self.ucc_ansatz)
         """Read molecular orbitals after first timestep"""
         if self.read_mos:
-            saoovqe_class.c_rhf = np.loadtxt("mos_save")
+            old_mo = np.loadtxt("mos_save")
+            old_ovlp_half = ovlp_half(np.loadtxt("ovlp_save"))
+            new_ovlp_min_half = ovlp_min_half(saoovqe_class.psi4_vars['S_ao'])
+            saoovqe_class.c_rhf = new_ovlp_min_half @ old_ovlp_half @ old_mo
         else:
             pass
         e_0, e_1 = saoovqe_class.vqe_kernel()
         """Save molecular orbitals"""
         mos_save = saoovqe_class.c_optimized
         np.savetxt("mos_save", mos_save)
+        ovlp_save = saoovqe_class.psi4_vars['S_ao']
+        np.savetxt("ovlp_save", ovlp_save)
         grad = []
         nac = []
         for i in range(self.natoms):
-            dx,dy,dz = saoovqe_class.get_gradient(i,state)
-            nx,ny,nz = saoovqe_class.get_nac(i)
-            grad.append([dx*self.bohr,dy*self.bohr,dz*self.bohr])
-            nac.append([-nx*self.bohr,-ny*self.bohr,-nz*self.bohr])
+            dx, dy, dz = saoovqe_class.get_gradient(i, state)
+            nx, ny, nz = saoovqe_class.get_nac(i)
+            grad.append([dx*self.bohr, dy*self.bohr, dz*self.bohr])
+            nac.append([-nx*self.bohr, -ny*self.bohr, -nz*self.bohr])
         self.energies = [e_0, e_1]
         self.grads = grad
         self.nacs = nac
 
-    def _read_grads(self,state):
-        self._do_saoovqe_ene_grad_nacs(state)        
+    def _read_grads(self, state):
+        self._do_saoovqe_ene_grad_nacs(state)
         return np.array(self.grads)
 
     def _read_nacs(self):
         nacs = {}
         leng = int(self.nstates*(self.nstates-1)/2)
         if self.nstates == 2:
-            nacs.update({(0,1):np.array(self.nacs)})
-            nacs.update({(1,0):-np.array(self.nacs)})
+            nacs.update({(0, 1): np.array(self.nacs)})
+            nacs.update({(1, 0): -np.array(self.nacs)})
         else:
             raise SystemExit("The number of states is different than 2")
         return nacs
@@ -147,10 +167,10 @@ class INTSAOOVQE(AbinitioBase):
         request.set('nacs', out_nacs)
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     from pysurf.database import PySurfDB
     from pysurf.spp import SurfacePointProvider
-    from numpy import copy 
+    from numpy import copy
 
     db_file = "sampling.db"
     db = PySurfDB.load_database(db_file, read_only=True)
@@ -160,8 +180,9 @@ if __name__=='__main__':
     nstates = 2
     state = 1
 
-    spp = SurfacePointProvider.from_questions(['energy', 'gradient', 'nacs'], nstates, natoms, atomids=atomids, config='spp.inp')
-    res = spp.request(crd, ['energy','gradient','nacs'], states=[state])
-    print("ENE:",res['energy'])
-    print("NACS:",res['nacs'])
-    print("GRAD:",res['gradient'][1])
+    spp = SurfacePointProvider.from_questions(
+        ['energy', 'gradient', 'nacs'], nstates, natoms, atomids=atomids, config='spp.inp')
+    res = spp.request(crd, ['energy', 'gradient', 'nacs'], states=[state])
+    print("ENE:", res['energy'])
+    print("NACS:", res['nacs'])
+    print("GRAD:", res['gradient'][1])
